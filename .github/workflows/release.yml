@@ -104,12 +104,10 @@ jobs:
                       styles.css
 
             - name: Create release
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  tag="${GITHUB_REF#refs/tags/}"
-
-                  gh release create "$tag" \
-                    --title="$tag" \
-                    --draft \
-                    main.js manifest.json styles.css
+              uses: softprops/action-gh-release@c6b5c04f4f6203569e06a63b136cc31771a4c8f8 # v2.2.0
+              with:
+                  draft: true
+                  files: |
+                      main.js
+                      manifest.json
+                      styles.css
