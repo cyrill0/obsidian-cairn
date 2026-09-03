@@ -4,19 +4,19 @@ Thanks for helping improve Cairn. Keep changes focused, documented, and safe for
 
 ## Development setup
 
-Use Node.js 22 or later and pnpm:
+Use Node.js 18 or later and npm:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm run dev
+npm install
+npm run dev
 ```
 
 The development build writes the plugin to `test-vault/.obsidian/plugins/obsidian-cairn/`. Open `test-vault` as an Obsidian vault, then reload the plugin after changing plugin metadata or CSS.
 
 ## Before opening a pull request
 
-1. Run `pnpm run build`.
-2. Run `pnpm run lint`.
+1. Run `npm run build`.
+2. Run `npm run lint`.
 3. Test with a separate sample vault. Do not use private or irreplaceable notes for development tests.
 4. Check the behaviour for empty vaults, duplicate markers, renamed/deleted notes, YAML frontmatter, wiki links, and a note modified while the sidebar is open.
 5. Update the README and changelog when user-facing behaviour changes.

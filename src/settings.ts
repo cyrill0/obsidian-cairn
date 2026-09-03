@@ -21,4 +21,8 @@ export class TodoSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 	}
+
+	getSettingDefinitions() {
+		return [];
+	}
 }

@@ -3,7 +3,7 @@ name: Release Obsidian plugin
 on:
     push:
         tags:
-            - '*'
+            - '*.*.*'
 
 jobs:
     build:
@@ -15,20 +15,25 @@ jobs:
         steps:
             - uses: actions/checkout@v6
 
-            - uses: pnpm/action-setup@v4
-              with:
-                  version: latest
-
             - name: Use Node.js
               uses: actions/setup-node@v6
               with:
-                  node-version: 24
-                  cache: 'pnpm'
+                  node-version: 22
+                  cache: 'npm'
+
+            - name: Validate release tag matches manifest version
+              run: |
+                  tag="${GITHUB_REF#refs/tags/}"
+                  manifest_version="$(node -p "require('./manifest.json').version")"
+                  if [ "$tag" != "$manifest_version" ]; then
+                    echo "Tag '$tag' does not match manifest version '$manifest_version'."
+                    exit 1
+                  fi
 
             - name: Build plugin
               run: |
-                  pnpm install --frozen-lockfile
-                  pnpm run build
+                  npm ci
+                  npm run build
 
             - name: Check for optional styles
               id: styles

@@ -22,11 +22,11 @@ export const todoHighlighter = ViewPlugin.fromClass(class {
         const regex = /\b(TODO|DONE):?/g;
 
         for (const { from, to } of view.visibleRanges) {
+            regex.lastIndex = 0;
             const text = view.state.doc.sliceString(from, to);
             let match;
             while ((match = regex.exec(text))) {
                 const wordStart = from + match.index;
-                const wordEnd = wordStart + match[0].length;
                 const isTodo = match[0].startsWith("TODO");
 
                 const line = view.state.doc.lineAt(wordStart);

@@ -17,13 +17,11 @@ Cairn keeps lightweight, local task lists close to the notes they belong to. Ope
 
 ## Screenshots
 
-Add these screenshots before publishing the repository or Community directory listing:
+Screenshots can be added to illustrate the sidebar, editor highlighting, and File Explorer indicators:
 
-1. `images/sidebar.png` — the Cairn sidebar with tagged and untagged markers.
-2. `images/editor-highlights.png` — TODO and DONE highlighting in an editor.
-3. `images/file-explorer.png` — File Explorer indicators for notes with active TODOs.
-
-Screenshots should use a real vault with non-sensitive sample notes. Once captured, replace this section with image links such as `![Cairn sidebar](./images/sidebar.png)`.
+- `images/sidebar.png`
+- `images/editor-highlights.png`
+- `images/file-explorer.png`
 
 ## Installation
 
@@ -119,18 +117,18 @@ Cairn runs entirely locally. It makes no network requests, sends no vault data o
 
 ## Development
 
-This project uses pnpm and Node.js 22 or later.
+This project uses npm and Node.js 18 or later.
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm run dev
+npm install
+npm run dev
 ```
 
 Run the production checks before a release:
 
 ```bash
-pnpm run build
-pnpm run lint
+npm run build
+npm run lint
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for development and review expectations, [SECURITY.md](./SECURITY.md) for vulnerability reporting, and [RELEASING.md](./RELEASING.md) for the release checklist.

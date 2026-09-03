@@ -10,7 +10,7 @@ Use this checklist for every public release.
 4. Run the version bump, for example:
 
    ```bash
-   pnpm version patch
+   npm version patch
    ```
 
    The version script keeps `manifest.json` and `versions.json` aligned with `package.json`.
@@ -19,9 +19,9 @@ Use this checklist for every public release.
 6. Run the release checks:
 
    ```bash
-   pnpm install --frozen-lockfile
-   pnpm run build
-   pnpm run lint
+   npm ci
+   npm run build
+   npm run lint
    ```
 
 7. Test `main.js`, `manifest.json`, and `styles.css` in a clean test vault on each supported platform.

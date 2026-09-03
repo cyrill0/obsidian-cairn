@@ -114,7 +114,6 @@ export default class TodoPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
-        await this.loadSettings();
 
         this.registerView(TODO_VIEW_TYPE, (leaf) => new TodoView(leaf, this));
         this.addRibbonIcon('check-square', 'Cairn', () => {
@@ -160,7 +159,7 @@ export default class TodoPlugin extends Plugin {
 
         this.registerMarkdownPostProcessor((element) => {
             const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null);
-            const regex = /\b(TODO|DONE):?/;
+            const regex = /\b(TODO|DONE):?/g;
             let node;
 
             while ((node = walker.nextNode())) {
@@ -174,7 +173,9 @@ export default class TodoPlugin extends Plugin {
                 let match;
                 while ((match = regex.exec(text)) !== null) {
                     wrapper.appendText(text.slice(last, match.index));
-                    const badge = wrapper.createSpan({ cls: match[0] === 'TODO' ? 'todo-badge' : 'done-badge' });
+                    const badge = wrapper.createSpan({
+                        cls: match[0].startsWith('TODO') ? 'todo-badge' : 'done-badge',
+                    });
                     badge.setText(match[0]);
                     last = match.index + match[0].length;
                 }
@@ -187,9 +188,6 @@ export default class TodoPlugin extends Plugin {
     }
 
     onunload() {
-        this.app.workspace.detachLeavesOfType(TODO_VIEW_TYPE);
-
-        // ADD THIS: Kill the observers
         this.explorerObservers.forEach(obs => obs.disconnect());
     }
 
@@ -197,7 +195,7 @@ export default class TodoPlugin extends Plugin {
         this.allTodos = [];
         const files = this.app.vault.getMarkdownFiles();
         for (let i = 0; i < files.length; i++) {
-            if (i % 10 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+            if (i % 10 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
             await this.scanFileForTodos(files[i]!, false);
         }
         this.refreshTodoView();
@@ -256,7 +254,7 @@ export default class TodoPlugin extends Plugin {
                 const fm = fmMatch[1]!;
                 const updated = fm.match(/^tags:/m)
                     ? fm.replace(/^(tags:\s*\n)((?:[ \t]*-[^\n]*\n)*)/m,
-                        (_, key, list) => {
+                        (_: string, key: string, list: string) => {
                             const rest = list.replace(/^[ \t]*-[ \t]*[^\n]*\n/m, '');
                             return `${key}- ${newTag}\n${rest}`;
                         })

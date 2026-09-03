@@ -147,6 +147,10 @@
     z-index: 10;
 }
 
+.todo-link-icon.is-visible {
+    display: flex;
+}
+
 .todo-delete-all {
     margin-left: auto;
     font-size: 0.75em;

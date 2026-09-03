@@ -27,4 +27,4 @@ test-vault/**/*.md
 test-vault/.obsidian/workspace.json
 test-vault/.obsidian/cache/
 test-vault/.obsidian/plugins/to-do-obsidian-plugin/main.js
-test-vault/.obsidian/plugins/obsidian-cairn/
+test-vault/.obsidian/plugins/cairn/
