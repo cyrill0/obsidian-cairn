@@ -96,6 +96,12 @@ export default class TodoPlugin extends Plugin {
         });
         this.addSettingTab(new TodoSettingTab(this.app, this));
 
+        this.addCommand({
+            id: 'refresh-todos',
+            name: 'Refresh todos',
+            callback: () => { void this.loadAllTodos(); },
+        });
+
         this.app.workspace.onLayoutReady(() => {
             this.loadAllTodos()
                 .then(() => {
@@ -234,6 +240,7 @@ export default class TodoPlugin extends Plugin {
                 path: file.path,
                 anchorId: item.anchorId,
                 target,
+                tag: (this.app.metadataCache.getFileCache(file)?.frontmatter?.tags as string[] | undefined)?.[0],
             };
         });
 
@@ -258,14 +265,43 @@ export default class TodoPlugin extends Plugin {
 
         if (existingLeaf) {
             await workspace.revealLeaf(existingLeaf);
-            return;
+        } else {
+            const leaf: WorkspaceLeaf | null = workspace.getLeftLeaf(false);
+            if (leaf) {
+                await leaf.setViewState({ type: TODO_VIEW_TYPE, active: true });
+                await workspace.revealLeaf(leaf);
+            }
         }
 
-        const leaf: WorkspaceLeaf | null = workspace.getLeftLeaf(false);
-        if (leaf) {
-            await leaf.setViewState({ type: TODO_VIEW_TYPE, active: true });
-            await workspace.revealLeaf(leaf);
+        await this.loadAllTodos();
+    }
+
+    async updateTodoTag(todo: TodoEntry, newTag: string) {
+        const file = this.app.vault.getFileByPath(todo.path);
+        if (!file) return;
+
+        this.lock(todo.path);
+        try {
+            await this.app.vault.process(file, (content) => {
+                const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+                if (!fmMatch) return content;
+
+                const fm = fmMatch[1]!;
+                const updated = fm.match(/^tags:/m)
+                    ? fm.replace(/^(tags:\s*\n)((?:[ \t]*-[^\n]*\n)*)/m,
+                        (_, key, list) => {
+                            const rest = list.replace(/^[ \t]*-[ \t]*[^\n]*\n/m, '');
+                            return `${key}- ${newTag}\n${rest}`;
+                        })
+                    : fm + `\ntags:\n- ${newTag}`;
+
+                return content.replace(fmMatch[1]!, updated);
+            });
+        } finally {
+            this.unlock(todo.path);
         }
+
+        todo.tag = newTag;
     }
 
     async loadSettings() {

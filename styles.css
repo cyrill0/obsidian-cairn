@@ -113,6 +113,31 @@
     background: var(--interactive-accent);
 }
 
+.todo-target {
+    flex-shrink: 0;
+    font-size: 0.72em;
+    color: var(--interactive-accent);
+    background: transparent;
+    border: 1px solid var(--interactive-accent);
+    border-radius: 4px;
+    padding: 1px 6px;
+    align-self: flex-start;
+    margin-top: 2px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.todo-target::before {
+    content: '↗ ';
+    font-size: 0.9em;
+}
+
+.todo-target:hover {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
 .todo-delete-all {
     margin-left: auto;
     font-size: 0.75em;
