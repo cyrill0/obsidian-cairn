@@ -94,7 +94,7 @@ export class TodoView extends ItemView {
      * Rebuilds the entire sidebar DOM using the latest `plugin.allTodos` array.
      *
      * Rendering steps:
-     * 1. Accesses the scrollable content container (`containerEl.children[1]`).
+     * 1. Accesses the scrollable content container (`this.contentEl`).
      * 2. Empties previous contents and creates the header with item count and refresh button.
      * 3. Handles the empty state if no todos exist.
      * 4. Groups todos by their frontmatter `tag` into a Map.
@@ -102,8 +102,7 @@ export class TodoView extends ItemView {
      * 6. Creates sections with headers, lists, drag-and-drop dropzones, and item cards.
      */
     refreshUI() {
-        // In Obsidian ItemView, children[0] is the view header and children[1] is the scrollable body container.
-        const container = this.containerEl.children[1];
+        const container = this.contentEl;
         if (!container) return;
 
         container.empty();

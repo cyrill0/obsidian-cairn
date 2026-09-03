@@ -55,6 +55,7 @@ export class PluginSettingTab {
 
 export class ItemView {
 	containerEl = { children: [] };
+	contentEl = { empty() {}, addClass(_c: string) {} };
 
 	constructor(_leaf: WorkspaceLeaf) {}
 	registerDomEvent() {}

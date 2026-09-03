@@ -94,6 +94,8 @@ export function createTodoHighlighter(plugin: TodoPlugin) {
             // Match the keyword with word boundaries and an optional trailing colon
             const regex = new RegExp(`\\b${escapeRegex(keyword)}:?`, 'g');
 
+            let lastLineFrom = -1;
+
             for (const { from, to } of view.visibleRanges) {
                 const text = view.state.doc.sliceString(from, to);
                 let match;
@@ -101,6 +103,9 @@ export function createTodoHighlighter(plugin: TodoPlugin) {
                     const wordStart = from + match.index;
                     // Resolve line boundaries for the matched position
                     const line = view.state.doc.lineAt(wordStart);
+                    // Avoid duplicate line ranges if multiple markers exist on the same line
+                    if (line.from <= lastLineFrom) continue;
+                    lastLineFrom = line.from;
                     // Mark the entire line containing the keyword
                     builder.add(line.from, line.to, todoLineMark);
                 }

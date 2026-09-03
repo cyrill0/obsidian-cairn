@@ -21,9 +21,9 @@ Cairn keeps lightweight, local task lists close to the notes they belong to. Ope
 
 ## Screenshots
 
-![Cairn sidebar](./images/sidebar.png)
+![Cairn sidebar](https://raw.githubusercontent.com/cyrill0/obsidian-cairn/main/images/sidebar.png)
 
-![Editor highlights](./images/editor-highlights.png)
+![Editor highlights](https://raw.githubusercontent.com/cyrill0/obsidian-cairn/main/images/editor-highlights.png)
 
 ## Installation
 
