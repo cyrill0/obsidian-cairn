@@ -1,8 +1,6 @@
 import esbuild from 'esbuild';
 import process from 'process';
 import { builtinModules } from 'node:module';
-import esbuild from "esbuild";
-import process from "process";
 import fs from "fs";
 import path from "path";
 
