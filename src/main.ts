@@ -188,14 +188,14 @@ export default class TodoPlugin extends Plugin {
         const existingLeaf = workspace.getLeavesOfType(TODO_VIEW_TYPE)[0];
 
         if (existingLeaf) {
-            workspace.revealLeaf(existingLeaf);
+            await workspace.revealLeaf(existingLeaf);
             return;
         }
 
         const leaf: WorkspaceLeaf | null = workspace.getLeftLeaf(false);
         if (leaf) {
             await leaf.setViewState({ type: TODO_VIEW_TYPE, active: true });
-            workspace.revealLeaf(leaf);
+            await workspace.revealLeaf(leaf);
         }
     }
 

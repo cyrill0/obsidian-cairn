@@ -132,7 +132,7 @@ export class TodoView extends ItemView {
             leaf = workspace.getLeaf('tab');
             await leaf.openFile(file);
         } else {
-            workspace.revealLeaf(leaf);
+            await workspace.revealLeaf(leaf);
         }
 
         if (leaf.view instanceof MarkdownView && leaf.view.editor) {
