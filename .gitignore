@@ -22,7 +22,8 @@ data.json
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 
-# Test vault caches (ignore these, but keep the vault itself)
+# Test vault
+test-vault/**/*.md
 test-vault/.obsidian/workspace.json
 test-vault/.obsidian/cache/
 test-vault/.obsidian/plugins/to-do-obsidian-plugin/main.js

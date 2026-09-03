@@ -1,21 +1,14 @@
-import { ItemView, MarkdownView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownView, WorkspaceLeaf, setIcon } from 'obsidian';
 import type TodoPlugin from './main';
 
 export const TODO_VIEW_TYPE = 'todo-view';
-
-export interface TodoTarget {
-    path: string;
-    subpath?: string;
-    display: string;
-}
 
 export interface TodoEntry {
     text: string;
     filename: string;
     path: string;
     line: number;
-    anchorId?: string;
-    target?: TodoTarget;
+    tag?: string;
 }
 
 export class TodoView extends ItemView {
@@ -30,6 +23,15 @@ export class TodoView extends ItemView {
     getDisplayText() { return 'Todo list'; }
 
     async onOpen() {
+        // Registered once per view lifecycle; Obsidian cleans it up on close
+        this.registerDomEvent(this.containerEl, 'keydown', (e: KeyboardEvent) => {
+            if (e.key !== 'Enter') return;
+            const focused = this.containerEl.querySelector('.todo-item:focus');
+            if (!focused) return;
+            const btn = focused.querySelector<HTMLButtonElement>('.todo-toggle-btn');
+            btn?.click();
+        });
+
         this.refreshUI();
     }
 
@@ -42,85 +44,140 @@ export class TodoView extends ItemView {
 
         const todos = this.plugin.allTodos;
 
-        const activeHeader = container.createDiv('todo-header');
-        activeHeader.createSpan({ text: 'Todos', cls: 'todo-title' });
-        const activeCount = activeHeader.createSpan({ text: String(todos.length), cls: 'todo-count' });
+        const header = container.createDiv('todo-header');
+        header.createSpan({ text: 'Todos', cls: 'todo-title' });
+        header.createSpan({ text: String(todos.length), cls: 'todo-count' });
+        const refreshBtn = header.createEl('button', { cls: 'todo-refresh-btn' });
+        refreshBtn.setAttribute('aria-label', 'Refresh todos');
+        setIcon(refreshBtn, 'refresh-cw');
+        refreshBtn.addEventListener('click', () => { void this.plugin.loadAllTodos(); });
 
         if (todos.length === 0) {
             container.createDiv({ text: 'No todos found.', cls: 'todo-empty' });
             return;
         }
 
-        const activeList = container.createEl('ul', { cls: 'todo-list' });
-
-        let hoveredToggle: (() => void) | null = null;
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Enter' && hoveredToggle) hoveredToggle();
-        };
-        this.registerDomEvent(document as unknown as HTMLElement, 'keydown', onKeyDown as EventListener);
-
+        const groups = new Map<string, TodoEntry[]>();
         for (const todo of todos) {
-            this.createTodoItem(todo, activeList, activeCount, (fn) => { hoveredToggle = fn; });
+            const key = todo.tag ?? '';
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key)!.push(todo);
         }
 
-        activeCount.setText(String(activeList.children.length));
+        const sortedKeys = [...groups.keys()].sort((a, b) => {
+            if (a === '') return 1;
+            if (b === '') return -1;
+            return a.localeCompare(b);
+        });
+
+        const drag: { sourceList: HTMLElement | null } = { sourceList: null };
+
+        for (const key of sortedKeys) {
+            const groupTodos = groups.get(key)!;
+            const section = container.createDiv({ cls: 'todo-group' });
+
+            const groupHeader = section.createDiv({ cls: 'todo-group-header' });
+            groupHeader.createSpan({ text: key || 'Untagged', cls: 'todo-group-title' });
+            groupHeader.createSpan({ text: String(groupTodos.length), cls: 'todo-count' });
+
+            const list = section.createEl('ul', { cls: 'todo-list', attr: { role: 'list' } });
+
+            list.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (key) list.addClass('todo-drop-target');
+            });
+            list.addEventListener('dragleave', () => list.removeClass('todo-drop-target'));
+            list.addEventListener('drop', (e) => {
+                e.preventDefault();
+                list.removeClass('todo-drop-target');
+                if (!key) return;
+                const todoId = e.dataTransfer?.getData('text/plain');
+                if (!todoId) return;
+                const todo = this.plugin.allTodos.find((t) => t.path + ':' + t.line === todoId);
+                if (!todo || todo.tag === key) return;
+                // No optimistic DOM move — refreshUI will re-render after the write
+                void this.plugin.updateTodoTag(todo, key).then(() => this.refreshUI());
+            });
+
+            for (const todo of groupTodos) {
+                this.createTodoItem(todo, list, drag);
+            }
+        }
     }
 
     private createTodoItem(
         todo: TodoEntry,
-        activeList: HTMLElement,
-        activeCount: HTMLElement,
-        setHovered: (fn: (() => void) | null) => void
+        list: HTMLElement,
+        drag: { sourceList: HTMLElement | null },
     ) {
-        const item = activeList.createEl('li', { cls: 'todo-item' });
+        const item = list.createEl('li', { cls: 'todo-item', attr: { role: 'listitem' } });
         item.tabIndex = 0;
+        item.draggable = true;
+        const todoId = todo.path + ':' + todo.line;
+        item.dataset.todoId = todoId;
+        item.addEventListener('dragstart', (e) => {
+            e.dataTransfer?.setData('text/plain', todoId);
+            drag.sourceList = list;
+        });
 
-        const checkbox = item.createEl('input', { cls: 'todo-checkbox' });
-        checkbox.type = 'checkbox';
-        checkbox.checked = false;
-
-        const checkIcon = item.createSpan({ cls: 'todo-check-icon' });
-        checkIcon.setText('○');
+        const toggleBtn = item.createEl('button', { cls: 'todo-toggle-btn todo-check-icon' });
+        toggleBtn.setAttribute('aria-label', 'Mark as done');
+        toggleBtn.setText('○');
+        toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleBtn.disabled = true;
+            void this.plugin.toggleTodoCheckbox(todo).then(() => this.refreshUI());
+        });
 
         const textEl = item.createSpan({ cls: 'todo-text' });
-        textEl.setText(todo.text.replace(/^[-*]\s*(\[.\]\s*)?/, ''));
+        const raw = todo.text.replace(/^[-*]\s*(\[.\]\s*)?/, '');
+        const linkRegex = /\[\[([^\]]+)\]\]/g;
+        let last = 0;
+        let m;
+        while ((m = linkRegex.exec(raw)) !== null) {
+            if (m.index > last) textEl.appendText(raw.slice(last, m.index));
+            const linkText = m[1]!;
+            const display = linkText.includes('|') ? linkText.split('|')[1]! : linkText.split('#')[0]!;
+            const linkSpan = textEl.createSpan({ cls: 'todo-inline-link', text: display });
+            linkSpan.addEventListener('mouseenter', () => {
+                let el: HTMLElement = linkSpan;
+                let left = el.offsetLeft + el.offsetWidth;
+                let top = el.offsetTop;
+                while (el.offsetParent && el.offsetParent !== item) {
+                    el = el.offsetParent as HTMLElement;
+                    left += el.offsetLeft;
+                    top += el.offsetTop;
+                }
+                linkIcon.style.left = left + 'px';
+                linkIcon.style.top = top + 'px';
+                linkIcon.style.display = 'flex';
+                linkIcon.onclick = (e) => {
+                    e.stopPropagation();
+                    void this.plugin.app.workspace.openLinkText(linkText, todo.path, 'tab');
+                };
+            });
+            linkSpan.addEventListener('mouseleave', (e) => {
+                if (!linkIcon.contains(e.relatedTarget as Node)) linkIcon.style.display = 'none';
+            });
+            linkSpan.addEventListener('click', (e: MouseEvent) => {
+                e.stopPropagation();
+                void this.plugin.app.workspace.openLinkText(linkText, todo.path, 'tab');
+            });
+            last = m.index + m[0].length;
+        }
+        if (last < raw.length) textEl.appendText(raw.slice(last));
 
-        const sourceEl = item.createSpan({ text: todo.filename, cls: 'todo-source' });
+        const linkIcon = item.createSpan({ cls: 'todo-link-icon', text: '↗' });
+        linkIcon.style.display = 'none';
+        linkIcon.addEventListener('mouseleave', () => { linkIcon.style.display = 'none'; });
+
+        const sourceEl = item.createEl('button', { text: todo.filename, cls: 'todo-source' });
         sourceEl.title = todo.path;
+        sourceEl.setAttribute('aria-label', `Open ${todo.filename}`);
         sourceEl.addEventListener('click', (e: MouseEvent) => {
             e.stopPropagation();
             void this.openFileAtLine(todo.path, todo.line);
         });
-
-        if (todo.target) {
-            const targetEl = item.createSpan({ text: todo.target.display, cls: 'todo-target' });
-            targetEl.title = todo.target.path + (todo.target.subpath ? '#' + todo.target.subpath : '');
-            targetEl.addEventListener('click', (e: MouseEvent) => {
-                e.stopPropagation();
-                void this.openTarget(todo.target!);
-            });
-        }
-
-        const toggle = () => {
-            item.remove();
-            activeCount.setText(String(activeList.children.length));
-            void this.plugin.toggleTodoCheckbox(todo);
-        };
-
-        item.addEventListener('click', toggle);
-        item.addEventListener('mouseenter', () => setHovered(toggle));
-        item.addEventListener('mouseleave', () => setHovered(null));
-    }
-
-    private async openTarget(target: { path: string; subpath?: string }) {
-        const file = this.plugin.app.vault.getFileByPath(target.path);
-        if (!file) return;
-
-        await this.plugin.app.workspace.openLinkText(
-            target.subpath ? `${file.basename}#${target.subpath}` : file.basename,
-            target.path,
-            'tab'
-        );
     }
 
     private async openFileAtLine(filePath: string, line: number) {
