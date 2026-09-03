@@ -1,6 +1,6 @@
 /*
- * Obsidian [Your Plugin Name]
- * Copyright (C) 2026 [Your Name or GitHub Handle] <[optional: your email]>
+ * Obsidian Cairn
+ * Copyright (C) 2026 Cyrill
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,9 +19,13 @@
 import { Plugin, TFile, TAbstractFile, WorkspaceLeaf, debounce } from 'obsidian';
 import { DEFAULT_SETTINGS, TodoPluginSettings, TodoSettingTab } from './settings';
 import { TODO_VIEW_TYPE, TodoView, TodoEntry } from './view';
-import { todoHighlighter } from './highlighter';
+import { createTodoHighlighter } from './highlighter';
 
 const ANCHOR_REGEX = /\s*%%tid:[a-zA-Z0-9]+%%/g;
+
+function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 function stripAnchors(text: string): string {
     return text.replace(ANCHOR_REGEX, '').trim();
@@ -49,8 +53,8 @@ export default class TodoPlugin extends Plugin {
 
     private explorerObservers: MutationObserver[] = [];
     private updateFileExplorerDebounced = debounce(() => this.decorateFileExplorer(), 250, true);
+    scheduleRescan = debounce(() => this.loadAllTodos(), 500);
 
-    // 2. The Decorator: Compares the DOM against your allTodos array
     private decorateFileExplorer() {
         // Get all files that currently have an UNFINISHED todo
         const activePaths = new Set<string>(this.allTodos.map(t => t.path));
@@ -168,16 +172,17 @@ export default class TodoPlugin extends Plugin {
             })
         );
 
-        this.registerEditorExtension(todoHighlighter);
+        this.registerEditorExtension(createTodoHighlighter(this));
 
         this.registerMarkdownPostProcessor((element) => {
+            const keyword = this.settings?.todoKeyword || 'TODO';
             const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null);
-            const regex = /\bTODO:?/g;
+            const regex = new RegExp(`\\b${escapeRegex(keyword)}:?`, 'g');
             let node;
 
             while ((node = walker.nextNode())) {
                 const text = node.textContent;
-                if (!text || !text.includes('TODO')) continue;
+                if (!text || !text.includes(keyword)) continue;
                 regex.lastIndex = 0;
                 if (!regex.test(text)) continue;
                 regex.lastIndex = 0;
@@ -218,8 +223,10 @@ export default class TodoPlugin extends Plugin {
         const rawTags: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.tags;
         const tag = Array.isArray(rawTags) ? (rawTags as string[])[0] : undefined;
 
+        const keyword = this.settings?.todoKeyword || 'TODO';
+        const regex = new RegExp(`\\b${escapeRegex(keyword)}:?`);
         const todosFromFile: TodoEntry[] = content.split('\n').flatMap((line, i) => {
-            if (!/\b(TODO|DONE):?/.test(line)) return [];
+            if (!regex.test(line)) return [];
             return [{ line: i, text: stripAnchors(line), filename: file.basename, path: file.path, tag }];
         });
 

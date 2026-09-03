@@ -56,3 +56,16 @@ export function setIcon() {}
 export function debounce<T extends (...args: never[]) => unknown>(callback: T): T {
 	return callback;
 }
+
+export class Setting {
+	constructor(_containerEl: unknown) {}
+
+	setName(_name: string) { return this; }
+
+	setDesc(_desc: string) { return this; }
+
+	addText(cb: (text: { setPlaceholder: (p: string) => void; setValue: (v: string) => void; onChange: (fn: (v: string) => void) => void }) => void) {
+		cb({ setPlaceholder: () => {}, setValue: () => {}, onChange: () => {} });
+		return this;
+	}
+}

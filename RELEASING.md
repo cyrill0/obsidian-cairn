@@ -30,7 +30,7 @@ Use this checklist for every public release.
 ## Publish
 
 1. Commit the version and documentation changes.
-2. Create and push a Git tag that exactly matches `manifest.json`'s version with a `v` prefix, for example `v1.0.1`.
+2. Create and push a Git tag that exactly matches `manifest.json`'s version **without** a `v` prefix, for example `1.0.1`. The Obsidian community directory validation requires the tag to match the version exactly.
 3. The release workflow creates a draft GitHub release with `main.js`, `manifest.json`, and `styles.css` attached.
 4. Verify the assets, release notes, version, and provenance attestation, then publish the draft.
 

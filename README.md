@@ -1,6 +1,6 @@
 # Cairn
 
-Collect `TODO` and `DONE` markers from across your Obsidian vault in one sidebar.
+Collect `TODO` markers from across your Obsidian vault in one sidebar.
 
 [![CI](https://github.com/cyrill0/obsidian-cairn/actions/workflows/lint.yml/badge.svg)](https://github.com/cyrill0/obsidian-cairn/actions/workflows/lint.yml)
 [![Latest release](https://img.shields.io/github/v/release/cyrill0/obsidian-cairn?display_name=tag)](https://github.com/cyrill0/obsidian-cairn/releases)
@@ -10,14 +10,14 @@ Cairn keeps lightweight, local task lists close to the notes they belong to. Ope
 
 ## Features
 
-- Scans Markdown files for `TODO`, `TODO:`, `DONE`, and `DONE:` markers.
+- Scans Markdown files for a configurable marker keyword (default `TODO` or `TODO:`).
 - Shows all matches in a dedicated sidebar, grouped by the first frontmatter tag on each note.
 - Opens the source note at the matching line.
 - Opens wiki links contained in a todo directly from the sidebar.
 - Removes a marker's entire source line when you select its completion button.
 - Lets you drag a marker to an existing tag group to update the note's tag.
-- Highlights TODO and DONE markers in the editor and reading view.
-- Marks files that contain active TODOs in the File Explorer.
+- Highlights the marker keyword in the editor and reading view.
+- Marks files that contain active markers in the File Explorer.
 
 ## Screenshots
 
@@ -47,7 +47,6 @@ After Cairn is published, open **Settings → Community plugins**, search for **
    ```md
    TODO: Review the project brief
    - TODO: Prepare [[Launch plan|the launch plan]]
-   DONE: Archive the previous brief
    ```
 
 2. Select the Cairn ribbon icon, or run **Refresh todos**, to open or refresh the sidebar.
@@ -69,7 +68,13 @@ You can drag a marker into another existing tag group in the sidebar to change i
 
 ## Supported marker syntax
 
-Cairn recognizes case-sensitive standalone `TODO` and `DONE` words, with an optional colon. Markers can appear in ordinary text or Markdown list items. `todo`, `Todo`, and custom keywords are not currently recognized.
+Cairn recognizes a case-sensitive standalone keyword, with an optional colon. The default keyword is `TODO`; you can change it in **Settings → Community plugins → Cairn**. Markers can appear in ordinary text or Markdown list items. Case variants like `todo` or `Todo` are not recognized.
+
+## Settings
+
+Open **Settings → Community plugins → Cairn** to configure:
+
+- **Marker keyword** — the word that marks a to-do line (default `TODO`). The vault is rescanned automatically after changes.
 
 ## Commands and interface
 
@@ -101,7 +106,7 @@ Review and back up important notes as you normally would before using any plugin
 
 ### The sidebar is empty
 
-Run **Refresh todos** and confirm that the note is a Markdown file containing an uppercase standalone `TODO` or `DONE` marker.
+Run **Refresh todos** and confirm that the note is a Markdown file containing the configured marker keyword (default `TODO`).
 
 ### A marker is in the wrong group
 

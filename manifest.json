@@ -2,8 +2,9 @@
 	"id": "cairn",
 	"name": "Cairn",
 	"version": "1.0.0",
-	"minAppVersion": "1.0.0",
-	"description": "Collect TODO and DONE markers from your vault in a sidebar.",
+	"minAppVersion": "1.5.0",
+	"description": "Collect TODO markers from your vault in a sidebar.",
 	"author": "Cyrill",
+	"authorUrl": "https://github.com/cyrill0",
 	"isDesktopOnly": false
 }

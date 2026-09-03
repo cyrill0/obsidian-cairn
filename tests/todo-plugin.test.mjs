@@ -50,13 +50,6 @@ test('scans markers and preserves their source locations', async () => {
 			tag: 'work',
 			text: 'TODO: Review the release plan',
 		},
-		{
-			filename: 'plan',
-			line: 2,
-			path: 'projects/plan.md',
-			tag: 'work',
-			text: 'DONE: Publish the release notes',
-		},
 	]);
 });
 
@@ -134,4 +127,28 @@ test('ignores non-array frontmatter tags', async () => {
 	await plugin.scanFileForTodos(fixture.file, false);
 
 	assert.equal(plugin.allTodos[0]?.tag, undefined);
+});
+
+test('uses the configured marker keyword', async () => {
+	const fixture = createApp({
+		content: [
+			'TODO: Should not match with custom keyword',
+			'FIXME: This should match',
+			'notFIXME: This should not match',
+		].join('\n'),
+	});
+	const plugin = new TodoPlugin(fixture.app);
+	plugin.settings = { todoKeyword: 'FIXME' };
+
+	await plugin.scanFileForTodos(fixture.file, false);
+
+	assert.deepEqual(plugin.allTodos, [
+		{
+			filename: 'plan',
+			line: 1,
+			path: fixture.file.path,
+			tag: undefined,
+			text: 'FIXME: This should match',
+		},
+	]);
 });
