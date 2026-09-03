@@ -236,12 +236,13 @@ export class TodoView extends ItemView {
             // Append plain text preceding the link
             if (m.index > last) textEl.appendText(raw.slice(last, m.index));
             const linkText = m[1]!;
+            const target = linkText.split('|')[0]!;
             // Resolve display text: prefer pipe alias (Target|Alias), else strip section anchors (#)
-            const display = linkText.includes('|') ? linkText.split('|')[1]! : linkText.split('#')[0]!;
+            const display = linkText.includes('|') ? linkText.split('|')[1]! : target.split('#')[0]!;
             const linkSpan = textEl.createSpan({ cls: 'todo-inline-link' });
             linkSpan.createSpan({ cls: 'todo-link-text', text: display });
             const linkIcon = linkSpan.createSpan({ cls: 'todo-link-icon', text: '↗' });
-            linkIcon.setAttribute('aria-label', `Open ${linkText}`);
+            linkIcon.setAttribute('aria-label', `Open ${target}`);
 
             // Direct click on the link or its jump icon opens the linked note in a tab
             linkSpan.addEventListener('click', (e: MouseEvent) => {
@@ -255,8 +256,7 @@ export class TodoView extends ItemView {
 
         // --- Source Note Badge Button ---
         const sourceEl = item.createEl('button', { text: todo.filename, cls: 'todo-source' });
-        sourceEl.title = todo.path;
-        sourceEl.setAttribute('aria-label', `Open ${todo.filename}`);
+        sourceEl.setAttribute('aria-label', todo.path);
         sourceEl.addEventListener('click', (e: MouseEvent) => {
             e.stopPropagation();
             void this.openFileAtLine(todo.path, todo.line);
