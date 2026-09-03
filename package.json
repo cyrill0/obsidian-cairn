@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-cairn",
 	"version": "1.0.0",
-	"description": "An Obsidian plugin that scouts your entire vault for TODOs and aggregates them in a sidebar panel",
+	"description": "Collect TODO and DONE markers from your vault in a sidebar",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
@@ -11,7 +11,7 @@
 		"lint": "eslint ."
 	},
 	"keywords": [],
-	"license": "MIT",
+	"license": "ISC",
 	"devDependencies": {
 		"@codemirror/state": "^6.7.2",
 		"@codemirror/view": "^6.43.10",
