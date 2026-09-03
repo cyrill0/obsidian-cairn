@@ -2,6 +2,10 @@
 
 Collect `TODO` and `DONE` markers from across your Obsidian vault in one sidebar.
 
+[![CI](https://github.com/cyrill0/obsidian-cairn/actions/workflows/lint.yml/badge.svg)](https://github.com/cyrill0/obsidian-cairn/actions/workflows/lint.yml)
+[![Latest release](https://img.shields.io/github/v/release/cyrill0/obsidian-cairn?display_name=tag)](https://github.com/cyrill0/obsidian-cairn/releases)
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue)](./LICENSE)
+
 Cairn keeps lightweight, local task lists close to the notes they belong to. Open the sidebar to review markers, jump back to their source notes, and remove a finished item without leaving the panel.
 
 ## Features
@@ -138,4 +142,4 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 ## License
 
-Licensed under the ISC license. See [LICENSE](./LICENSE).
+Licensed under the GNU General Public License v3.0. See [LICENSE](./LICENSE).

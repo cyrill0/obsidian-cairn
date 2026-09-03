@@ -36,4 +36,4 @@ Describe the user-visible change, manual test coverage, and any behaviour that m
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the repository's ISC license.
+By contributing, you agree that your contributions are licensed under the repository's GPL-3.0-only license.

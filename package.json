@@ -21,7 +21,7 @@
 	},
 	"homepage": "https://github.com/cyrill0/obsidian-cairn#readme",
 	"keywords": ["obsidian", "obsidian-plugin", "todo", "tasks", "markdown"],
-	"license": "ISC",
+	"license": "GPL-3.0-only",
 	"devDependencies": {
 		"@codemirror/state": "^6.7.2",
 		"@codemirror/view": "^6.43.10",
