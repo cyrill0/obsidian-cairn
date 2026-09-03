@@ -238,31 +238,12 @@ export class TodoView extends ItemView {
             const linkText = m[1]!;
             // Resolve display text: prefer pipe alias (Target|Alias), else strip section anchors (#)
             const display = linkText.includes('|') ? linkText.split('|')[1]! : linkText.split('#')[0]!;
-            const linkSpan = textEl.createSpan({ cls: 'todo-inline-link', text: display });
+            const linkSpan = textEl.createSpan({ cls: 'todo-inline-link' });
+            linkSpan.createSpan({ cls: 'todo-link-text', text: display });
+            const linkIcon = linkSpan.createSpan({ cls: 'todo-link-icon', text: '↗' });
+            linkIcon.setAttribute('aria-label', `Open ${linkText}`);
 
-            // On hover: show a floating jump icon (↗) positioned directly over the link
-            linkSpan.addEventListener('mouseenter', () => {
-                let el: HTMLElement = linkSpan;
-                let left = el.offsetLeft + el.offsetWidth;
-                let top = el.offsetTop;
-                // Calculate absolute position relative to item by walking parent hierarchy
-                while (el.offsetParent && el.offsetParent !== item) {
-                    el = el.offsetParent as HTMLElement;
-                    left += el.offsetLeft;
-                    top += el.offsetTop;
-                }
-                linkIcon.style.left = left + 'px';
-                linkIcon.style.top = top + 'px';
-                linkIcon.classList.add('todo-link-icon--visible');
-                linkIcon.onclick = (e) => {
-                    e.stopPropagation();
-                    void this.plugin.app.workspace.openLinkText(linkText, todo.path, 'tab');
-                };
-            });
-            linkSpan.addEventListener('mouseleave', (e) => {
-                if (!linkIcon.contains(e.relatedTarget as Node)) linkIcon.classList.remove('todo-link-icon--visible');
-            });
-            // Direct click on the link opens the linked note in a tab
+            // Direct click on the link or its jump icon opens the linked note in a tab
             linkSpan.addEventListener('click', (e: MouseEvent) => {
                 e.stopPropagation();
                 void this.plugin.app.workspace.openLinkText(linkText, todo.path, 'tab');
@@ -271,10 +252,6 @@ export class TodoView extends ItemView {
         }
         // Append any remaining text after the last link
         if (last < raw.length) textEl.appendText(raw.slice(last));
-
-        // Floating jump icon attached to the item card
-        const linkIcon = item.createSpan({ cls: 'todo-link-icon', text: '↗' });
-        linkIcon.addEventListener('mouseleave', () => { linkIcon.classList.remove('todo-link-icon--visible'); });
 
         // --- Source Note Badge Button ---
         const sourceEl = item.createEl('button', { text: todo.filename, cls: 'todo-source' });

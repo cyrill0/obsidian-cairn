@@ -221,7 +221,6 @@
 }
 
 .todo-link-icon {
-    position: absolute;
     display: none;
     align-items: center;
     justify-content: center;
@@ -230,15 +229,20 @@
     background: var(--interactive-accent);
     border-radius: 3px;
     padding: 0 3px;
+    margin-left: 3px;
     cursor: pointer;
-    pointer-events: all;
     white-space: nowrap;
-    line-height: 1.6;
-    z-index: 10;
+    line-height: 1.4;
+    vertical-align: middle;
+    text-decoration: none;
 }
 
-.todo-link-icon--visible {
-    display: flex;
+.todo-inline-link:hover .todo-link-icon {
+    display: inline-flex;
+}
+
+.todo-link-icon:hover {
+    filter: brightness(1.15);
 }
 
 .todo-delete-all {
