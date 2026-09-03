@@ -208,6 +208,9 @@ export class TodoView extends ItemView {
             e.dataTransfer?.setData('text/plain', todoId);
             drag.sourceList = list;
         });
+        item.addEventListener('click', () => {
+            void this.openFileAtLine(todo.path, todo.line);
+        });
 
         // --- Complete / Toggle Button ---
         const toggleBtn = item.createEl('button', { cls: 'todo-toggle-btn todo-check-icon' });

@@ -76,14 +76,42 @@ test('removes a marker after nearby lines have shifted', async () => {
 	});
 	const plugin = new TodoPlugin(fixture.app);
 
-	await plugin.toggleTodoCheckbox({
+	const todoToRemove = {
 		filename: 'plan',
 		line: 1,
 		path: fixture.file.path,
 		text: 'TODO: Remove this',
-	});
+	};
+	const todoToKeep = {
+		filename: 'plan',
+		line: 1,
+		path: fixture.file.path,
+		text: 'TODO: Keep this',
+	};
+	plugin.allTodos = [todoToKeep, todoToRemove];
+
+	await plugin.toggleTodoCheckbox(todoToRemove);
 
 	assert.equal(fixture.getContent(), ['New heading', 'TODO: Keep this', 'Closing line'].join('\n'));
+	assert.deepEqual(plugin.allTodos, [todoToKeep]);
+});
+
+test('removes a marker from allTodos even if the line was already removed from the file', async () => {
+	const fixture = createApp({
+		content: ['Line 1', 'Line 2'].join('\n'),
+	});
+	const plugin = new TodoPlugin(fixture.app);
+	const staleTodo = {
+		filename: 'plan',
+		line: 1,
+		path: fixture.file.path,
+		text: 'TODO: Stale item',
+	};
+	plugin.allTodos = [staleTodo];
+
+	await plugin.toggleTodoCheckbox(staleTodo);
+
+	assert.deepEqual(plugin.allTodos, []);
 });
 
 test('updates the first tag in inline and block frontmatter lists', async (context) => {

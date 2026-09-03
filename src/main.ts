@@ -228,13 +228,13 @@ export default class TodoPlugin extends Plugin {
         const file = this.app.vault.getFileByPath(todo.path);
         if (!file) return;
 
+        let targetIndex = -1;
         this.lock(todo.path);
         try {
             await this.app.vault.process(file, (content) => {
                 const lines = content.split('\n');
-                const targetIndex = this.findTargetLineIndex(lines, todo);
+                targetIndex = this.findTargetLineIndex(lines, todo);
                 if (targetIndex === -1) return content;
-                this.updateFileExplorerDebounced();
 
                 // Delete the entire line from the file
                 lines.splice(targetIndex, 1);
@@ -243,6 +243,22 @@ export default class TodoPlugin extends Plugin {
         } finally {
             this.unlock(todo.path);
         }
+
+        // Remove the completed to-do item from the in-memory cache so the sidebar view updates
+        this.allTodos = this.allTodos.filter(
+            (t) => t !== todo && !(t.path === todo.path && t.text === todo.text && (targetIndex === -1 || t.line === targetIndex))
+        );
+
+        // Adjust 0-based line numbers for any subsequent to-dos in the same file
+        if (targetIndex !== -1) {
+            for (const t of this.allTodos) {
+                if (t.path === todo.path && t.line > targetIndex) {
+                    t.line--;
+                }
+            }
+        }
+
+        this.updateFileExplorerDebounced();
     }
 
     /**

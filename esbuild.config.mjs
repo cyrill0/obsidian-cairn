@@ -20,8 +20,8 @@ const copyStaticFilesPlugin = {
     name: 'copy-static-files',
     setup(build) {
         build.onEnd(() => {
-            // Only sync assets into the test-vault during local dev
-            if (!prod) {
+            // Sync assets into the test-vault if it exists
+            if (fs.existsSync('test-vault/.obsidian/plugins')) {
                 fs.mkdirSync(outdir, { recursive: true });
 
                 if (fs.existsSync('manifest.json')) {
@@ -30,6 +30,10 @@ const copyStaticFilesPlugin = {
 
                 if (fs.existsSync('styles.css')) {
                     fs.copyFileSync('styles.css', path.join(outdir, 'styles.css'));
+                }
+
+                if (prod && fs.existsSync('main.js')) {
+                    fs.copyFileSync('main.js', path.join(outdir, 'main.js'));
                 }
 
                 console.log(`[build] Assets synced to ${outdir}`);

@@ -20,7 +20,7 @@
     padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
 }
 
 .todo-header {
@@ -35,7 +35,6 @@
     font-weight: 600;
     color: var(--text-normal);
 }
-
 
 .todo-count {
     background: var(--interactive-accent);
@@ -52,6 +51,49 @@
     padding: 12px 0;
 }
 
+.todo-refresh-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    margin-left: auto;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.todo-refresh-btn:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+}
+
+/* ==========================================================================
+   Tag Groups
+   ========================================================================== */
+
+.todo-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.todo-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.todo-group-title {
+    font-size: 0.75em;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
 .todo-list {
     list-style: none;
     margin: 0;
@@ -59,7 +101,18 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    border-radius: 6px;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
+
+.todo-list.todo-drop-target {
+    background-color: var(--background-modifier-form-field);
+    box-shadow: inset 0 0 0 2px var(--interactive-accent);
+}
+
+/* ==========================================================================
+   Todo Items
+   ========================================================================== */
 
 .todo-item {
     position: relative;
@@ -69,12 +122,18 @@
     padding: 8px 10px;
     border-radius: 6px;
     background: var(--background-secondary);
-    transition: background 0.15s ease;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
     cursor: pointer;
 }
 
 .todo-item:hover {
     background: var(--background-modifier-hover);
+    border-color: var(--background-modifier-border-hover);
+}
+
+.todo-item:active {
+    transform: scale(0.995);
 }
 
 .todo-text {
@@ -98,6 +157,36 @@
     background: var(--text-muted);
 }
 
+/* Toggle / complete button */
+.todo-toggle-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-size: 1em;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    color: var(--text-muted);
+    margin-top: 1px;
+    border-radius: 50%;
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
+}
+
+.todo-toggle-btn:hover {
+    color: var(--text-on-accent);
+    background-color: var(--color-green);
+    transform: scale(1.1);
+}
+
+.todo-toggle-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .todo-source {
     flex-shrink: 0;
     font-size: 0.72em;
@@ -115,24 +204,6 @@
 
 .todo-source:hover {
     background: var(--interactive-accent);
-}
-
-.todo-toggle-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    flex-shrink: 0;
-    font-size: 1em;
-    width: 18px;
-    text-align: center;
-    color: var(--text-muted);
-    margin-top: 1px;
-}
-
-.todo-toggle-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
 }
 
 .todo-inline-link {
@@ -193,32 +264,54 @@
     outline-offset: -2px;
 }
 
-/* The TODO Pill */
+/* ==========================================================================
+   Reading Mode Badge
+   ========================================================================== */
+
 .todo-badge {
+    display: inline-block;
     background-color: var(--color-orange);
     color: var(--text-on-accent);
-    border-radius: 6px;
-    padding: 2px 6px;
-    font-size: 0.85em;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.75em;
     font-weight: 700;
     letter-spacing: 0.5px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    text-transform: uppercase;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    vertical-align: middle;
+    line-height: 1.4;
 }
 
-/* Add a glowing orange dot to file tree items that have active TODOs */
+/* ==========================================================================
+   File Explorer Indicator
+   ========================================================================== */
+
 .nav-file-title.has-active-todos::after {
-    content: "•";
-    color: var(--color-orange);
-    font-size: 1.5em;
-    line-height: 0.5;
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--color-orange);
     margin-left: 6px;
     vertical-align: middle;
-    text-shadow: 0 0 4px var(--color-orange);
+    box-shadow: 0 0 4px var(--color-orange);
 }
 
-/* Editor line highlight for TODO lines */
+/* ==========================================================================
+   Editor Line Highlight
+   ========================================================================== */
+
+/* Highlight the whole line containing the configured to-do keyword. */
 .todo-line {
-    background-color: var(--color-orange);
-    color: var(--text-on-accent);
-    border-radius: 3px;
+    border-left: 3px solid var(--color-orange);
+    border-radius: 0 4px 4px 0;
+    background-color: var(--background-modifier-form-field);
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Slightly stronger background on interaction. */
+.todo-line:hover {
+    background-color: var(--background-modifier-hover);
 }
