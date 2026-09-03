@@ -42,46 +42,13 @@ import { Plugin, TFile, TAbstractFile, WorkspaceLeaf, debounce } from 'obsidian'
 import { DEFAULT_SETTINGS, TodoPluginSettings, TodoSettingTab } from './settings';
 import { TODO_VIEW_TYPE, TodoView, TodoEntry } from './view';
 import { createTodoHighlighter } from './highlighter';
+import { escapeRegex, stripAnchors } from './utils';
 
-/**
- * Regular expression matching internal task anchor comments in Markdown notes.
- * Format: `%%tid:<alphanumeric>%%` (Obsidian comment syntax).
- * Used to strip internal metadata tags from display text and line comparisons.
- */
 /**
  * Allowed characters in Obsidian tags (alphanumerics, underscores, hyphens, and slashes for nested tags).
  * Rejects newlines, quotes, and YAML delimiter injection attempts.
  */
 export const TAG_VALIDATION_REGEX = new RegExp('^[a-zA-Z0-9_/-]+$');
-
-/**
- * Regular expression matching internal task anchor comments in Markdown notes.
- * Format: `%%tid:<alphanumeric>%%` (Obsidian comment syntax).
- * Used to strip internal metadata tags from display text and line comparisons.
- */
-const ANCHOR_REGEX = /\s*%%tid:[a-zA-Z0-9]+%%/g;
-
-/**
- * Escapes characters with special meaning in regular expressions.
- * Ensures custom marker keywords containing symbols (e.g., "[TODO]") can be safely
- * used within dynamically constructed regular expressions.
- *
- * @param s - The raw string to escape.
- * @returns The regex-escaped string.
- */
-function escapeRegex(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Strips internal task anchor comments (`%%tid:...%%`) from a line of text and trims whitespace.
- *
- * @param text - The raw text line from a note.
- * @returns Cleaned text suitable for display and comparison.
- */
-function stripAnchors(text: string): string {
-    return text.replace(ANCHOR_REGEX, '').trim();
-}
 
 /**
  * Main plugin class managing the lifecycle, indexing, and UI integrations of Obsidian Cairn.
@@ -159,6 +126,12 @@ export default class TodoPlugin extends Plugin {
     /** Counter tracking the active vault scan generation to prevent concurrent race conditions. */
     private scanGeneration = 0;
 
+    /**
+     * Per-file in-memory cache of scanned to-dos indexed by note path and mtime.
+     * Prevents re-reading and re-parsing unchanged Markdown files on subsequent rescans.
+     */
+    private fileTodoCache = new Map<string, { mtime: number; todos: TodoEntry[] }>();
+
     /** Set of modified Markdown files queued for debounced scanning. */
     private modifiedFiles = new Set<TFile>();
 
@@ -176,16 +149,20 @@ export default class TodoPlugin extends Plugin {
     private explorerObservers: MutationObserver[] = [];
 
     /**
-     * Debounced wrapper (250ms, immediate first invocation) for updating File Explorer badges.
-     * Prevents UI stutter during rapid folder expansions or batch file events.
+     * Debounced wrapper (250ms, trailing edge) for updating File Explorer badges.
+     * Prevents UI stutter and double-scans during rapid folder expansions or batch file events.
      */
-    private updateFileExplorerDebounced = debounce(() => this.decorateFileExplorer(), 250, true);
+    private updateFileExplorerDebounced = debounce(() => this.decorateFileExplorer(), 250);
 
     /**
      * Debounced wrapper (500ms) for triggering a full vault rescan.
-     * Used when settings (e.g. marker keyword) change.
+     * Used when settings (e.g. marker keyword) change. Clears the mtime cache
+     * so all files are re-evaluated with the new keyword.
      */
-    scheduleRescan = debounce(() => this.loadAllTodos(), 500);
+    scheduleRescan = debounce(() => {
+        this.fileTodoCache.clear();
+        void this.loadAllTodos();
+    }, 500);
 
     /**
      * Injects or removes the `.has-active-todos` CSS class on File Explorer tree nodes.
@@ -195,8 +172,11 @@ export default class TodoPlugin extends Plugin {
      * against `allTodos`.
      */
     private decorateFileExplorer() {
-        // Collect all file paths that currently contain at least one unfinished todo
-        const activePaths = new Set<string>(this.allTodos.map(t => t.path));
+        // Collect all file paths containing active todos directly without intermediate array allocation
+        const activePaths = new Set<string>();
+        for (const todo of this.allTodos) {
+            activePaths.add(todo.path);
+        }
 
         // Find all file explorer panels (users can have multiple split leaves open)
         const leaves = this.app.workspace.getLeavesOfType('file-explorer');
@@ -349,6 +329,7 @@ export default class TodoPlugin extends Plugin {
         this.registerEvent(
             this.app.vault.on('delete', (file: TAbstractFile) => {
                 if (file instanceof TFile && file.extension === 'md') {
+                    this.fileTodoCache.delete(file.path);
                     this.allTodos = this.allTodos.filter((t) => t.path !== file.path);
                     this.refreshTodoView();
                     this.updateFileExplorerDebounced();
@@ -379,6 +360,14 @@ export default class TodoPlugin extends Plugin {
         this.registerEvent(
             this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
                 if (file instanceof TFile && file.extension === 'md') {
+                    const cached = this.fileTodoCache.get(oldPath);
+                    if (cached) {
+                        this.fileTodoCache.delete(oldPath);
+                        this.fileTodoCache.set(file.path, {
+                            mtime: cached.mtime,
+                            todos: cached.todos.map((t) => ({ ...t, path: file.path, filename: file.basename })),
+                        });
+                    }
                     this.allTodos = this.allTodos.map((t) =>
                         t.path === oldPath ? { ...t, path: file.path, filename: file.basename } : t
                     );
@@ -409,19 +398,20 @@ export default class TodoPlugin extends Plugin {
             while ((node = walker.nextNode())) {
                 const text = node.textContent;
                 if (!text || !text.includes(keyword)) continue;
+
                 regex.lastIndex = 0;
-                if (!regex.test(text)) continue;
-                regex.lastIndex = 0;
+                let match = regex.exec(text);
+                if (!match) continue;
 
                 // Replace matching text node with a fragment containing styled badge spans
                 const wrapper = createSpan();
                 let last = 0;
-                let match;
-                while ((match = regex.exec(text))) {
+                while (match) {
                     wrapper.appendText(text.slice(last, match.index));
                     const badge = wrapper.createSpan({ cls: 'todo-badge' });
                     badge.setText(match[0]);
                     last = match.index + match[0].length;
+                    match = regex.exec(text);
                 }
                 wrapper.appendText(text.slice(last));
                 node.parentNode?.replaceChild(wrapper, node);
@@ -470,6 +460,12 @@ export default class TodoPlugin extends Plugin {
             if (this.isUnloaded || this.scanGeneration !== generation) return;
 
             const file = files[i]!;
+            const cached = this.fileTodoCache.get(file.path);
+            if (cached && cached.mtime === file.stat?.mtime) {
+                collectedTodos.push(...cached.todos);
+                continue;
+            }
+
             const content = await this.app.vault.cachedRead(file);
             const rawTags: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.tags;
             let tag: string | undefined;
@@ -480,10 +476,11 @@ export default class TodoPlugin extends Plugin {
             }
 
             const lines = content.split('\n');
+            const todosFromFile: TodoEntry[] = [];
             for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
                 const line = lines[lineIdx]!;
                 if (regex.test(line)) {
-                    collectedTodos.push({
+                    todosFromFile.push({
                         line: lineIdx,
                         text: stripAnchors(line),
                         filename: file.basename,
@@ -492,6 +489,12 @@ export default class TodoPlugin extends Plugin {
                     });
                 }
             }
+
+            this.fileTodoCache.set(file.path, {
+                mtime: file.stat?.mtime ?? 0,
+                todos: todosFromFile,
+            });
+            collectedTodos.push(...todosFromFile);
         }
 
         if (!this.isUnloaded && this.scanGeneration === generation) {
@@ -506,7 +509,7 @@ export default class TodoPlugin extends Plugin {
      *
      * Reads note content via `app.vault.cachedRead()` and extracts the primary frontmatter
      * tag using `app.metadataCache.getFileCache()`. Replaces existing entries for this file
-     * in `allTodos`.
+     * in `allTodos` and updates `fileTodoCache`.
      *
      * @param file - The Markdown file to scan.
      * @param shouldRefresh - Whether to immediately re-render the sidebar UI (defaults to true).
@@ -524,9 +527,24 @@ export default class TodoPlugin extends Plugin {
 
         const keyword = this.settings?.todoKeyword || 'TODO';
         const regex = new RegExp(`\\b${escapeRegex(keyword)}:?`);
-        const todosFromFile: TodoEntry[] = content.split('\n').flatMap((line, i) => {
-            if (!regex.test(line)) return [];
-            return [{ line: i, text: stripAnchors(line), filename: file.basename, path: file.path, tag }];
+        const lines = content.split('\n');
+        const todosFromFile: TodoEntry[] = [];
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx]!;
+            if (regex.test(line)) {
+                todosFromFile.push({
+                    line: lineIdx,
+                    text: stripAnchors(line),
+                    filename: file.basename,
+                    path: file.path,
+                    tag,
+                });
+            }
+        }
+
+        this.fileTodoCache.set(file.path, {
+            mtime: file.stat?.mtime ?? 0,
+            todos: todosFromFile,
         });
 
         // Replace cached todos for this file path with the freshly scanned list
@@ -552,7 +570,7 @@ export default class TodoPlugin extends Plugin {
      *
      * If the view leaf already exists, it is brought to the front.
      * Otherwise, a new leaf is created in the left sidebar.
-     * Initiates a full vault scan once opened.
+     * Initiates an initial vault scan if the cache is empty, avoiding redundant full scans.
      */
     async openTodoPanel() {
         const { workspace } = this.app;
@@ -568,7 +586,12 @@ export default class TodoPlugin extends Plugin {
             }
         }
 
-        await this.loadAllTodos();
+        // Only perform a full vault scan if the cache has not been loaded yet
+        if (this.allTodos.length === 0) {
+            await this.loadAllTodos();
+        } else {
+            this.refreshTodoView();
+        }
     }
 
     /**

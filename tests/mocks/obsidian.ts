@@ -19,6 +19,7 @@ export class TAbstractFile {
 export class TFile extends TAbstractFile {
 	extension = 'md';
 	basename: string;
+	stat = { mtime: Date.now(), ctime: Date.now(), size: 0 };
 
 	constructor(path: string) {
 		super(path);

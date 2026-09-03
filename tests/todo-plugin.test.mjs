@@ -338,3 +338,41 @@ test('scans created or modified files incrementally (Bug 9 live indexing)', asyn
 	assert.equal(plugin.allTodos[0]?.text, 'TODO: Newly added item');
 });
 
+test('skips re-reading unchanged files via mtime cache during rescan', async () => {
+	let readCount = 0;
+	const file = new TFile('notes/cached.md');
+	file.stat = { mtime: 1000, ctime: 1000, size: 20 };
+
+	const fixture = {
+		app: {
+			metadataCache: { getFileCache: () => ({ frontmatter: {} }) },
+			vault: {
+				cachedRead: async () => {
+					readCount++;
+					return 'TODO: Cached test';
+				},
+				getMarkdownFiles: () => [file],
+			},
+			workspace: { getLeavesOfType: () => [] },
+		},
+	};
+
+	const plugin = new TodoPlugin(fixture.app);
+
+	// First scan reads file
+	await plugin.loadAllTodos();
+	assert.equal(readCount, 1);
+	assert.equal(plugin.allTodos.length, 1);
+
+	// Second scan with same mtime should NOT call cachedRead
+	await plugin.loadAllTodos();
+	assert.equal(readCount, 1); // Still 1!
+	assert.equal(plugin.allTodos.length, 1);
+
+	// When mtime changes, it should re-read
+	file.stat.mtime = 2000;
+	await plugin.loadAllTodos();
+	assert.equal(readCount, 2);
+});
+
+

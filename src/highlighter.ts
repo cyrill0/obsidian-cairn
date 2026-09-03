@@ -17,24 +17,13 @@
 import { RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import type TodoPlugin from './main';
+import { escapeRegex } from './utils';
 
 /**
  * CodeMirror mark decoration that adds the `.todo-line` CSS class around the
  * matched to-do keyword. Styled in `styles.css` as a rounded, pill-like highlight.
  */
 const todoKeywordMark = Decoration.mark({ class: "todo-line" });
-
-/**
- * Escapes characters with special meaning in regular expressions.
- * Ensures custom marker keywords containing symbols (e.g., "[TODO]") can be safely
- * interpolated into a RegExp constructor.
- *
- * @param s - The raw string to escape.
- * @returns The escaped string safe for use in regular expressions.
- */
-function escapeRegex(s: string): string {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /**
  * Creates a CodeMirror 6 `ViewPlugin` that highlights to-do lines in the active editor.
