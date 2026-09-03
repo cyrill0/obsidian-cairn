@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a reproducible problem with Cairn
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How can we reproduce it?
+      description: Use a minimal synthetic vault. Do not include private notes.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Include Cairn, Obsidian, and operating system versions.
+    validations:
+      required: true

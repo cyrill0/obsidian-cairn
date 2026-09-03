@@ -150,14 +150,14 @@ export class TodoView extends ItemView {
                 }
                 linkIcon.style.left = left + 'px';
                 linkIcon.style.top = top + 'px';
-                linkIcon.style.display = 'flex';
+                linkIcon.classList.add('todo-link-icon--visible');
                 linkIcon.onclick = (e) => {
                     e.stopPropagation();
                     void this.plugin.app.workspace.openLinkText(linkText, todo.path, 'tab');
                 };
             });
             linkSpan.addEventListener('mouseleave', (e) => {
-                if (!linkIcon.contains(e.relatedTarget as Node)) linkIcon.style.display = 'none';
+                if (!linkIcon.contains(e.relatedTarget as Node)) linkIcon.classList.remove('todo-link-icon--visible');
             });
             linkSpan.addEventListener('click', (e: MouseEvent) => {
                 e.stopPropagation();
@@ -168,8 +168,7 @@ export class TodoView extends ItemView {
         if (last < raw.length) textEl.appendText(raw.slice(last));
 
         const linkIcon = item.createSpan({ cls: 'todo-link-icon', text: '↗' });
-        linkIcon.style.display = 'none';
-        linkIcon.addEventListener('mouseleave', () => { linkIcon.style.display = 'none'; });
+        linkIcon.addEventListener('mouseleave', () => { linkIcon.classList.remove('todo-link-icon--visible'); });
 
         const sourceEl = item.createEl('button', { text: todo.filename, cls: 'todo-source' });
         sourceEl.title = todo.path;

@@ -2,7 +2,6 @@ import { RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 
 const todoLineMark = Decoration.mark({ class: "todo-line" });
-const doneLineMark = Decoration.mark({ class: "done-line" });
 
 export const todoHighlighter = ViewPlugin.fromClass(class {
     decorations: DecorationSet;
@@ -19,18 +18,15 @@ export const todoHighlighter = ViewPlugin.fromClass(class {
 
     buildDecorations(view: EditorView) {
         const builder = new RangeSetBuilder<Decoration>();
-        const regex = /\b(TODO|DONE):?/g;
+        const regex = /\bTODO:?/g;
 
         for (const { from, to } of view.visibleRanges) {
             const text = view.state.doc.sliceString(from, to);
             let match;
             while ((match = regex.exec(text))) {
                 const wordStart = from + match.index;
-                const wordEnd = wordStart + match[0].length;
-                const isTodo = match[0].startsWith("TODO");
-
                 const line = view.state.doc.lineAt(wordStart);
-                builder.add(line.from, line.to, isTodo ? todoLineMark : doneLineMark);
+                builder.add(line.from, line.to, todoLineMark);
             }
         }
         return builder.finish();

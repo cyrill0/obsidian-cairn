@@ -17,13 +17,11 @@ Cairn keeps lightweight, local task lists close to the notes they belong to. Ope
 
 ## Screenshots
 
-Add these screenshots before publishing the repository or Community directory listing:
+![Cairn sidebar](./images/sidebar.svg)
 
-1. `images/sidebar.png` — the Cairn sidebar with tagged and untagged markers.
-2. `images/editor-highlights.png` — TODO and DONE highlighting in an editor.
-3. `images/file-explorer.png` — File Explorer indicators for notes with active TODOs.
+![Editor highlights](./images/editor-highlights.svg)
 
-Screenshots should use a real vault with non-sensitive sample notes. Once captured, replace this section with image links such as `![Cairn sidebar](./images/sidebar.png)`.
+![File Explorer indicators](./images/file-explorer.svg)
 
 ## Installation
 
@@ -69,12 +67,49 @@ You can drag a marker into another existing tag group in the sidebar to change i
 
 Cairn recognizes case-sensitive standalone `TODO` and `DONE` words, with an optional colon. Markers can appear in ordinary text or Markdown list items. `todo`, `Todo`, and custom keywords are not currently recognized.
 
+## Commands and interface
+
+- **Refresh todos** rescans every Markdown file in the vault and refreshes the Cairn sidebar.
+- The **Cairn** ribbon icon opens the sidebar. If the sidebar is already open, it brings it into view and refreshes the list.
+- A note-name button opens the note at the marker's line.
+- A marker's circle button removes the entire matching line from its note.
+- Dragging a marker onto a named tag group updates the source note's frontmatter tag.
+
+## How Cairn changes notes
+
+Cairn scans vault Markdown files locally. A scan does not add markers or otherwise change their content.
+
+Two actions can modify a note:
+
+- **Complete a marker:** removes the complete source line. This is deliberate and irreversible from within Cairn; use Obsidian's normal Undo command immediately if needed.
+- **Move to a tag group:** changes the note's YAML `tags` field. The note must already contain YAML frontmatter, and Cairn uses the first tag as its sidebar group.
+
+Review and back up important notes as you normally would before using any plugin that writes to vault files.
+
 ## Limitations
 
 - Selecting a marker's completion button deletes the whole matching line; there is no built-in undo or archive action.
 - Refresh the sidebar after editing marker text or creating a new marker outside Cairn.
 - Grouping uses the first tag in a note's YAML frontmatter. Dragging is available only when a destination tag group already exists.
 - Cairn treats matching text literally; it does not interpret task syntax, due dates, priorities, or nested tasks.
+
+## Troubleshooting
+
+### The sidebar is empty
+
+Run **Refresh todos** and confirm that the note is a Markdown file containing an uppercase standalone `TODO` or `DONE` marker.
+
+### A marker is in the wrong group
+
+Open the source note and check its YAML frontmatter. Cairn uses the first value under `tags`. Edit the frontmatter directly, then run **Refresh todos**.
+
+### A File Explorer indicator is missing
+
+Refresh the list, then collapse and expand the relevant folder. The indicator is only applied to visible File Explorer entries.
+
+### The plugin does not load
+
+For a manual installation, confirm that `main.js`, `manifest.json`, and `styles.css` are directly inside `<your-vault>/.obsidian/plugins/cairn/`, then restart Obsidian and enable Cairn.
 
 ## Privacy
 
@@ -93,14 +128,13 @@ Run the production checks before a release:
 
 ```bash
 pnpm run build
+pnpm run test
 pnpm run lint
 ```
 
-## Changelog
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development and review expectations, [SECURITY.md](./SECURITY.md) for vulnerability reporting, and [RELEASING.md](./RELEASING.md) for the release checklist.
 
-### 1.0.0
-
-- Initial release of Cairn.
+See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 ## License
 

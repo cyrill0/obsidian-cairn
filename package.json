@@ -1,17 +1,27 @@
 {
 	"name": "obsidian-cairn",
 	"version": "1.0.0",
-	"description": "An Obsidian plugin that scouts your entire vault for TODOs and aggregates them in a sidebar panel",
+	"description": "Collect TODO and DONE markers from your vault in a sidebar",
 	"main": "main.js",
 	"type": "module",
+	"packageManager": "pnpm@11.25.0",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"test": "node scripts/run-tests.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},
-	"keywords": [],
-	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/cyrill0/obsidian-cairn.git"
+	},
+	"bugs": {
+		"url": "https://github.com/cyrill0/obsidian-cairn/issues"
+	},
+	"homepage": "https://github.com/cyrill0/obsidian-cairn#readme",
+	"keywords": ["obsidian", "obsidian-plugin", "todo", "tasks", "markdown"],
+	"license": "ISC",
 	"devDependencies": {
 		"@codemirror/state": "^6.7.2",
 		"@codemirror/view": "^6.43.10",

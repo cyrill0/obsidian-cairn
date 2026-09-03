@@ -1,3 +1,21 @@
+/*
+ * Obsidian [Your Plugin Name]
+ * Copyright (C) 2026 [Your Name or GitHub Handle] <[optional: your email]>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { Plugin, TFile, TAbstractFile, WorkspaceLeaf, debounce } from 'obsidian';
 import { DEFAULT_SETTINGS, TodoPluginSettings, TodoSettingTab } from './settings';
 import { TODO_VIEW_TYPE, TodoView, TodoEntry } from './view';
@@ -35,12 +53,7 @@ export default class TodoPlugin extends Plugin {
     // 2. The Decorator: Compares the DOM against your allTodos array
     private decorateFileExplorer() {
         // Get all files that currently have an UNFINISHED todo
-        const activePaths = new Set<string>();
-        for (const todo of this.allTodos) {
-            if (!/\bDONE:?/.test(todo.text)) {
-                activePaths.add(todo.path);
-            }
-        }
+        const activePaths = new Set<string>(this.allTodos.map(t => t.path));
 
         // Find all file explorer panels (users can have multiple open!)
         const leaves = this.app.workspace.getLeavesOfType('file-explorer');
@@ -114,7 +127,6 @@ export default class TodoPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
-        await this.loadSettings();
 
         this.registerView(TODO_VIEW_TYPE, (leaf) => new TodoView(leaf, this));
         this.addRibbonIcon('check-square', 'Cairn', () => {
@@ -160,12 +172,13 @@ export default class TodoPlugin extends Plugin {
 
         this.registerMarkdownPostProcessor((element) => {
             const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null);
-            const regex = /\b(TODO|DONE):?/;
+            const regex = /\bTODO:?/g;
             let node;
 
             while ((node = walker.nextNode())) {
                 const text = node.textContent;
-                if (!text || (!text.includes('TODO') && !text.includes('DONE'))) continue;
+                if (!text || !text.includes('TODO')) continue;
+                regex.lastIndex = 0;
                 if (!regex.test(text)) continue;
                 regex.lastIndex = 0;
 
@@ -174,7 +187,7 @@ export default class TodoPlugin extends Plugin {
                 let match;
                 while ((match = regex.exec(text)) !== null) {
                     wrapper.appendText(text.slice(last, match.index));
-                    const badge = wrapper.createSpan({ cls: match[0] === 'TODO' ? 'todo-badge' : 'done-badge' });
+                    const badge = wrapper.createSpan({ cls: 'todo-badge' });
                     badge.setText(match[0]);
                     last = match.index + match[0].length;
                 }
@@ -187,9 +200,6 @@ export default class TodoPlugin extends Plugin {
     }
 
     onunload() {
-        this.app.workspace.detachLeavesOfType(TODO_VIEW_TYPE);
-
-        // ADD THIS: Kill the observers
         this.explorerObservers.forEach(obs => obs.disconnect());
     }
 
@@ -197,7 +207,7 @@ export default class TodoPlugin extends Plugin {
         this.allTodos = [];
         const files = this.app.vault.getMarkdownFiles();
         for (let i = 0; i < files.length; i++) {
-            if (i % 10 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+            if (i % 10 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
             await this.scanFileForTodos(files[i]!, false);
         }
         this.refreshTodoView();
@@ -205,7 +215,8 @@ export default class TodoPlugin extends Plugin {
 
     async scanFileForTodos(file: TFile, shouldRefresh = true) {
         const content = await this.app.vault.cachedRead(file);
-        const tag = (this.app.metadataCache.getFileCache(file)?.frontmatter?.tags as string[] | undefined)?.[0];
+        const rawTags: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.tags;
+        const tag = Array.isArray(rawTags) ? (rawTags as string[])[0] : undefined;
 
         const todosFromFile: TodoEntry[] = content.split('\n').flatMap((line, i) => {
             if (!/\b(TODO|DONE):?/.test(line)) return [];
@@ -247,6 +258,7 @@ export default class TodoPlugin extends Plugin {
         const file = this.app.vault.getFileByPath(todo.path);
         if (!file) return;
 
+        let written = false;
         this.lock(todo.path);
         try {
             await this.app.vault.process(file, (content) => {
@@ -254,21 +266,31 @@ export default class TodoPlugin extends Plugin {
                 if (!fmMatch) return content;
 
                 const fm = fmMatch[1]!;
-                const updated = fm.match(/^tags:/m)
-                    ? fm.replace(/^(tags:\s*\n)((?:[ \t]*-[^\n]*\n)*)/m,
-                        (_, key, list) => {
+                let updated: string;
+                if (/^tags:\s*\[/m.test(fm)) {
+                    // inline array: tags: [a, b] → tags: [newTag, b]
+                    updated = fm.replace(/^(tags:\s*\[)[^,\]]*/m,
+                        (_: string, open: string) => `${open}${newTag}`);
+                } else if (/^tags:/m.test(fm)) {
+                    // block list: replace first entry
+                    updated = fm.replace(/^(tags:\s*\n)((?:[ \t]*-[^\n]*\n)*)/m,
+                        (_: string, key: string, list: string) => {
                             const rest = list.replace(/^[ \t]*-[ \t]*[^\n]*\n/m, '');
                             return `${key}- ${newTag}\n${rest}`;
-                        })
-                    : fm + `\ntags:\n- ${newTag}`;
+                        });
+                } else {
+                    updated = fm + `\ntags:\n- ${newTag}`;
+                }
 
+                if (updated === fm) return content;
+                written = true;
                 return content.replace(fmMatch[1]!, updated);
             });
         } finally {
             this.unlock(todo.path);
         }
 
-        todo.tag = newTag;
+        if (written) todo.tag = newTag;
     }
 
     async loadSettings() {

@@ -1,0 +1,58 @@
+export class TAbstractFile {
+	path: string;
+
+	constructor(path: string) {
+		this.path = path;
+	}
+}
+
+export class TFile extends TAbstractFile {
+	extension = 'md';
+	basename: string;
+
+	constructor(path: string) {
+		super(path);
+		this.basename = path.split('/').at(-1)?.replace(/\.md$/, '') ?? path;
+	}
+}
+
+export class WorkspaceLeaf {}
+
+export class Plugin {
+	app: unknown;
+
+	constructor(app: unknown) {
+		this.app = app;
+	}
+
+	async loadData() { return null; }
+	async saveData() {}
+	registerView() {}
+	addRibbonIcon() {}
+	addSettingTab() {}
+	addCommand() {}
+	registerEvent() {}
+	registerEditorExtension() {}
+	registerMarkdownPostProcessor() {}
+}
+
+export class PluginSettingTab {
+	containerEl = { empty() {} };
+
+	constructor(_app: unknown, _plugin: unknown) {}
+}
+
+export class ItemView {
+	containerEl = { children: [] };
+
+	constructor(_leaf: WorkspaceLeaf) {}
+	registerDomEvent() {}
+}
+
+export class MarkdownView {}
+
+export function setIcon() {}
+
+export function debounce<T extends (...args: never[]) => unknown>(callback: T): T {
+	return callback;
+}
