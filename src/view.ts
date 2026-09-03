@@ -1,11 +1,11 @@
-import { ItemView, MarkdownView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, MarkdownView, WorkspaceLeaf, setIcon } from 'obsidian';
 import type TodoPlugin from './main';
 
 export const TODO_VIEW_TYPE = 'todo-view';
 
 export interface TodoTarget {
-    path: string;
-    subpath?: string;
+    linktext: string;
+    sourcePath: string;
     display: string;
 }
 
@@ -45,6 +45,12 @@ export class TodoView extends ItemView {
         const activeHeader = container.createDiv('todo-header');
         activeHeader.createSpan({ text: 'Todos', cls: 'todo-title' });
         const activeCount = activeHeader.createSpan({ text: String(todos.length), cls: 'todo-count' });
+        const refreshBtn = activeHeader.createEl('button', { cls: 'todo-refresh-btn' });
+        refreshBtn.setAttribute('aria-label', 'Refresh todos');
+        setIcon(refreshBtn, 'refresh-cw');
+        refreshBtn.addEventListener('click', () => {
+            void this.plugin.loadAllTodos();
+        });
 
         if (todos.length === 0) {
             container.createDiv({ text: 'No todos found.', cls: 'todo-empty' });
@@ -94,7 +100,7 @@ export class TodoView extends ItemView {
 
         if (todo.target) {
             const targetEl = item.createSpan({ text: todo.target.display, cls: 'todo-target' });
-            targetEl.title = todo.target.path + (todo.target.subpath ? '#' + todo.target.subpath : '');
+            targetEl.title = todo.target.linktext;
             targetEl.addEventListener('click', (e: MouseEvent) => {
                 e.stopPropagation();
                 void this.openTarget(todo.target!);
@@ -112,15 +118,8 @@ export class TodoView extends ItemView {
         item.addEventListener('mouseleave', () => setHovered(null));
     }
 
-    private async openTarget(target: { path: string; subpath?: string }) {
-        const file = this.plugin.app.vault.getFileByPath(target.path);
-        if (!file) return;
-
-        await this.plugin.app.workspace.openLinkText(
-            target.subpath ? `${file.basename}#${target.subpath}` : file.basename,
-            target.path,
-            'tab'
-        );
+    private async openTarget(target: TodoTarget) {
+        await this.plugin.app.workspace.openLinkText(target.linktext, target.sourcePath, 'tab');
     }
 
     private async openFileAtLine(filePath: string, line: number) {

@@ -1,4 +1,4 @@
-import { Plugin, TFile, TAbstractFile, WorkspaceLeaf, debounce } from 'obsidian';
+import { Plugin, TFile, TAbstractFile, WorkspaceLeaf } from 'obsidian';
 import { DEFAULT_SETTINGS, TodoPluginSettings, TodoSettingTab } from './settings';
 import { TODO_VIEW_TYPE, TodoView, TodoEntry } from './view';
 import { todoHighlighter } from './highlighter';
@@ -23,14 +23,6 @@ export function generateAnchorId(): string {
 export default class TodoPlugin extends Plugin {
     settings!: TodoPluginSettings;
     allTodos: TodoEntry[] = [];
-
-    private onFileModified = debounce(
-        (file: TFile) => {
-            this.scanFileForTodos(file).catch(console.error);
-        },
-        1500,
-        true
-    );
 
     private locks = new Map<string, number>();
 
@@ -111,14 +103,6 @@ export default class TodoPlugin extends Plugin {
                 })
                 .catch(console.error);
         });
-
-        this.registerEvent(
-            this.app.vault.on('modify', (file: TAbstractFile) => {
-                if (file instanceof TFile && file.extension === 'md' && !this.locks.has(file.path)) {
-                    this.onFileModified(file);
-                }
-            })
-        );
 
         this.registerEvent(
             this.app.vault.on('delete', (file: TAbstractFile) => {
@@ -236,10 +220,9 @@ export default class TodoPlugin extends Plugin {
             if (link) {
                 const linkedFile = this.app.metadataCache.getFirstLinkpathDest(link.link.split('#')[0]!, file.path);
                 if (linkedFile) {
-                    const subpath = link.link.includes('#') ? link.link.split('#').slice(1).join('#') : undefined;
                     target = {
-                        path: linkedFile.path,
-                        subpath,
+                        linktext: link.link,
+                        sourcePath: file.path,
                         display: link.displayText || linkedFile.basename,
                     };
                 }
