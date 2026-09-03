@@ -104,9 +104,9 @@ jobs:
                       styles.css
 
             - name: Create release
-              uses: softprops/action-gh-release@c6b5c04f4f6203569e06a63b136cc31771a4c8f8 # v2.2.0
+              uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048 # v2.2.0
               with:
-                  draft: true
+                  draft: false
                   files: |
                       main.js
                       manifest.json
