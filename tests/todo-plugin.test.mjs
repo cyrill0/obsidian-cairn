@@ -32,6 +32,7 @@ function createApp({ content, tags = [] }) {
 			vault: {
 				cachedRead: async () => storedContent,
 				getFileByPath: (path) => path === file.path ? file : null,
+				getMarkdownFiles: () => [file],
 				process: async (_target, update) => {
 					storedContent = update(storedContent);
 				},
@@ -284,3 +285,56 @@ test('uses the configured marker keyword', async () => {
 		},
 	]);
 });
+
+test('cancels stale in-flight scans when a newer scan is triggered (Bug 4 race protection)', async () => {
+	const fileA = new TFile('notes/a.md');
+	const fileB = new TFile('notes/b.md');
+	let readDelay = 10;
+
+	const fixture = {
+		app: {
+			metadataCache: { getFileCache: () => ({ frontmatter: { tags: ['work'] } }) },
+			vault: {
+				cachedRead: async (f) => {
+					if (readDelay > 0) await new Promise((r) => window.setTimeout(r, readDelay));
+					return f.path === 'notes/a.md' ? 'TODO: Item A' : 'TODO: Item B';
+				},
+				getMarkdownFiles: () => [fileA, fileB],
+			},
+			workspace: { getLeavesOfType: () => [] },
+		},
+	};
+
+	const plugin = new TodoPlugin(fixture.app);
+
+	// Start first scan (generation 1)
+	const scan1 = plugin.loadAllTodos();
+	// Immediately start second scan (generation 2) which supersedes scan 1
+	const scan2 = plugin.loadAllTodos();
+
+	await Promise.all([scan1, scan2]);
+
+	// Should contain exactly the results from the latest generation, no duplicates
+	assert.equal(plugin.allTodos.length, 2);
+	assert.deepEqual(
+		plugin.allTodos.map((t) => t.text),
+		['TODO: Item A', 'TODO: Item B']
+	);
+});
+
+test('scans created or modified files incrementally (Bug 9 live indexing)', async () => {
+	const fixture = createApp({ content: 'Initial note content' });
+	const plugin = new TodoPlugin(fixture.app);
+
+	// Initially no todos
+	await plugin.scanFileForTodos(fixture.file, false);
+	assert.deepEqual(plugin.allTodos, []);
+
+	// Simulate user adding a todo to the note
+	await fixture.app.vault.process(fixture.file, () => 'TODO: Newly added item');
+	await plugin.scanFileForTodos(fixture.file, false);
+
+	assert.equal(plugin.allTodos.length, 1);
+	assert.equal(plugin.allTodos[0]?.text, 'TODO: Newly added item');
+});
+

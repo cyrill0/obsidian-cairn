@@ -140,9 +140,6 @@ export class TodoView extends ItemView {
             return a.localeCompare(b);
         });
 
-        // Shared mutable drag context across item drag listeners
-        const drag: { sourceList: HTMLElement | null } = { sourceList: null };
-
         // --- Render Tag Groups ---
         for (const key of sortedKeys) {
             const groupTodos = groups.get(key)!;
@@ -175,7 +172,7 @@ export class TodoView extends ItemView {
 
             // Render individual todo cards
             for (const todo of groupTodos) {
-                this.createTodoItem(todo, list, drag);
+                this.createTodoItem(todo, list);
             }
         }
     }
@@ -191,12 +188,10 @@ export class TodoView extends ItemView {
      *
      * @param todo - The to-do entry to render.
      * @param list - The parent `<ul>` container element.
-     * @param drag - Drag state tracker.
      */
     private createTodoItem(
         todo: TodoEntry,
         list: HTMLElement,
-        drag: { sourceList: HTMLElement | null },
     ) {
         const item = list.createEl('li', { cls: 'todo-item', attr: { role: 'listitem' } });
         item.tabIndex = 0;
@@ -206,7 +201,6 @@ export class TodoView extends ItemView {
         item.dataset.todoId = todoId;
         item.addEventListener('dragstart', (e) => {
             e.dataTransfer?.setData('text/plain', todoId);
-            drag.sourceList = list;
         });
         item.addEventListener('click', () => {
             void this.openFileAtLine(todo.path, todo.line);

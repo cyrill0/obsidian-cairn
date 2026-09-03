@@ -144,18 +144,6 @@
     word-break: break-word;
 }
 
-.todo-done .todo-text {
-    text-decoration: line-through;
-    color: var(--text-muted);
-}
-
-.todo-done-header {
-    margin-top: 16px;
-}
-
-.todo-count-done {
-    background: var(--text-muted);
-}
 
 /* Toggle / complete button */
 .todo-toggle-btn {
@@ -245,23 +233,6 @@
     filter: brightness(1.15);
 }
 
-.todo-delete-all {
-    margin-left: auto;
-    font-size: 0.75em;
-    padding: 2px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--text-muted);
-    background: transparent;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-}
-
-.todo-delete-all:hover {
-    background: var(--color-red);
-    color: var(--text-on-accent);
-    border-color: var(--color-red);
-}
 
 .todo-item:focus {
     outline: 2px solid var(--interactive-accent);

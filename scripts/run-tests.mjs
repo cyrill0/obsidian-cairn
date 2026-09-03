@@ -17,6 +17,9 @@ try {
 		format: 'esm',
 		platform: 'node',
 		target: 'node22',
+		banner: {
+			js: 'if (typeof window === "undefined") { Object.assign(globalThis, { window: globalThis }); }',
+		},
 		outfile: outputFile,
 		plugins: [{
 			name: 'mock-obsidian-api',

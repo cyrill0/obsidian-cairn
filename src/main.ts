@@ -156,6 +156,22 @@ export default class TodoPlugin extends Plugin {
         return -1;
     }
 
+    /** Counter tracking the active vault scan generation to prevent concurrent race conditions. */
+    private scanGeneration = 0;
+
+    /** Set of modified Markdown files queued for debounced scanning. */
+    private modifiedFiles = new Set<TFile>();
+
+    /** Debounced batch scanner for modified notes to avoid heavy I/O during active typing. */
+    private flushModifiedFiles = debounce(() => {
+        if (this.isUnloaded) return;
+        const filesToScan = Array.from(this.modifiedFiles);
+        this.modifiedFiles.clear();
+        for (const file of filesToScan) {
+            void this.scanFileForTodos(file);
+        }
+    }, 500);
+
     /** Active MutationObserver instances attached to open File Explorer leaves. */
     private explorerObservers: MutationObserver[] = [];
 
@@ -335,6 +351,26 @@ export default class TodoPlugin extends Plugin {
                 if (file instanceof TFile && file.extension === 'md') {
                     this.allTodos = this.allTodos.filter((t) => t.path !== file.path);
                     this.refreshTodoView();
+                    this.updateFileExplorerDebounced();
+                }
+            })
+        );
+
+        // Vault event: index newly created Markdown files immediately
+        this.registerEvent(
+            this.app.vault.on('create', (file: TAbstractFile) => {
+                if (file instanceof TFile && file.extension === 'md') {
+                    void this.scanFileForTodos(file);
+                }
+            })
+        );
+
+        // Vault event: queue modified Markdown files for debounced re-indexing
+        this.registerEvent(
+            this.app.vault.on('modify', (file: TAbstractFile) => {
+                if (file instanceof TFile && file.extension === 'md') {
+                    this.modifiedFiles.add(file);
+                    this.flushModifiedFiles();
                 }
             })
         );
@@ -347,6 +383,7 @@ export default class TodoPlugin extends Plugin {
                         t.path === oldPath ? { ...t, path: file.path, filename: file.basename } : t
                     );
                     this.refreshTodoView();
+                    this.updateFileExplorerDebounced();
                 }
             })
         );
@@ -404,29 +441,63 @@ export default class TodoPlugin extends Plugin {
         this.isUnloaded = true;
         this.updateFileExplorerDebounced.cancel();
         this.scheduleRescan.cancel();
+        this.flushModifiedFiles.cancel();
+        this.modifiedFiles.clear();
         this.explorerObservers.forEach(obs => obs.disconnect());
     }
 
     /**
      * Performs a full scan of all Markdown files in the vault.
      *
-     * Performance optimization:
-     * To prevent freezing the main UI thread in vaults containing thousands of notes,
-     * this method processes files in batches of 10, yielding to the browser event loop
-     * via `setTimeout(resolve, 0)` between batches.
+     * Concurrency & Performance:
+     * - Uses a generation counter (`scanGeneration`) to cancel superseded scans and prevent
+     *   race conditions when multiple scans are triggered concurrently.
+     * - Collects todos into a local array without wiping `this.allTodos` prematurely, avoiding
+     *   UI flicker or empty cache windows.
+     * - Processes files in batches of 10, yielding to the browser event loop via `setTimeout(0)`.
      */
     async loadAllTodos() {
-        this.allTodos = [];
+        const generation = ++this.scanGeneration;
         const files = this.app.vault.getMarkdownFiles();
+        const collectedTodos: TodoEntry[] = [];
+        const keyword = this.settings?.todoKeyword || 'TODO';
+        const regex = new RegExp(`\\b${escapeRegex(keyword)}:?`);
+
         for (let i = 0; i < files.length; i++) {
-            if (this.isUnloaded) return;
+            if (this.isUnloaded || this.scanGeneration !== generation) return;
             // Cooperative multitasking: yield to event loop every 10 files
-            if (i % 10 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
-            if (this.isUnloaded) return;
-            await this.scanFileForTodos(files[i]!, false);
+            if (i > 0 && i % 10 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
+            if (this.isUnloaded || this.scanGeneration !== generation) return;
+
+            const file = files[i]!;
+            const content = await this.app.vault.cachedRead(file);
+            const rawTags: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.tags;
+            let tag: string | undefined;
+            if (Array.isArray(rawTags) && typeof rawTags[0] === 'string' && TAG_VALIDATION_REGEX.test(rawTags[0])) {
+                tag = rawTags[0];
+            } else if (typeof rawTags === 'string' && TAG_VALIDATION_REGEX.test(rawTags)) {
+                tag = rawTags;
+            }
+
+            const lines = content.split('\n');
+            for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+                const line = lines[lineIdx]!;
+                if (regex.test(line)) {
+                    collectedTodos.push({
+                        line: lineIdx,
+                        text: stripAnchors(line),
+                        filename: file.basename,
+                        path: file.path,
+                        tag,
+                    });
+                }
+            }
         }
-        if (!this.isUnloaded) {
+
+        if (!this.isUnloaded && this.scanGeneration === generation) {
+            this.allTodos = collectedTodos;
             this.refreshTodoView();
+            this.updateFileExplorerDebounced();
         }
     }
 
