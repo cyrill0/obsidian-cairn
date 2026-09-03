@@ -3,11 +3,19 @@ import type TodoPlugin from './main';
 
 export const TODO_VIEW_TYPE = 'todo-view';
 
+export interface TodoTarget {
+    path: string;
+    subpath?: string;
+    display: string;
+}
+
 export interface TodoEntry {
     text: string;
     filename: string;
     path: string;
     line: number;
+    anchorId?: string;
+    target?: TodoTarget;
 }
 
 export class TodoView extends ItemView {
@@ -51,47 +59,28 @@ export class TodoView extends ItemView {
         };
         this.registerDomEvent(document as unknown as HTMLElement, 'keydown', onKeyDown as EventListener);
 
-        const doneHeader = container.createDiv('todo-header todo-done-header');
-        doneHeader.createSpan({ text: 'Completed', cls: 'todo-title' });
-        const doneCount = doneHeader.createSpan({ text: '0', cls: 'todo-count todo-count-done' });
-        const deleteAllBtn = doneHeader.createEl('button', { text: 'Delete all', cls: 'todo-delete-all' });
-        const doneList = container.createEl('ul', { cls: 'todo-list' });
-
-        deleteAllBtn.addEventListener('click', () => {
-            deleteAllBtn.disabled = true;
-            deleteAllBtn.setText('Deleting...');
-            void this.plugin.deleteCompletedTodos();
-        });
-
         for (const todo of todos) {
-            this.createTodoItem(todo, activeList, activeCount, doneList, doneCount, (fn) => { hoveredToggle = fn; });
+            this.createTodoItem(todo, activeList, activeCount, (fn) => { hoveredToggle = fn; });
         }
 
         activeCount.setText(String(activeList.children.length));
-        doneCount.setText(String(doneList.children.length));
     }
 
     private createTodoItem(
         todo: TodoEntry,
         activeList: HTMLElement,
         activeCount: HTMLElement,
-        doneList: HTMLElement,
-        doneCount: HTMLElement,
         setHovered: (fn: (() => void) | null) => void
     ) {
-        const isDone = /\bDONE:?/.test(todo.text);
-        const parentList = isDone ? doneList : activeList;
-        const item = parentList.createEl('li', { cls: 'todo-item' });
+        const item = activeList.createEl('li', { cls: 'todo-item' });
         item.tabIndex = 0;
-
-        if (isDone) item.addClass('todo-done');
 
         const checkbox = item.createEl('input', { cls: 'todo-checkbox' });
         checkbox.type = 'checkbox';
-        checkbox.checked = isDone;
+        checkbox.checked = false;
 
         const checkIcon = item.createSpan({ cls: 'todo-check-icon' });
-        checkIcon.setText(isDone ? '✓' : '○');
+        checkIcon.setText('○');
 
         const textEl = item.createSpan({ cls: 'todo-text' });
         textEl.setText(todo.text.replace(/^[-*]\s*(\[.\]\s*)?/, ''));
@@ -103,20 +92,35 @@ export class TodoView extends ItemView {
             void this.openFileAtLine(todo.path, todo.line);
         });
 
+        if (todo.target) {
+            const targetEl = item.createSpan({ text: todo.target.display, cls: 'todo-target' });
+            targetEl.title = todo.target.path + (todo.target.subpath ? '#' + todo.target.subpath : '');
+            targetEl.addEventListener('click', (e: MouseEvent) => {
+                e.stopPropagation();
+                void this.openTarget(todo.target!);
+            });
+        }
+
         const toggle = () => {
-            checkbox.checked = !checkbox.checked;
-            item.toggleClass('todo-done', checkbox.checked);
-            checkIcon.setText(checkbox.checked ? '✓' : '○');
-            const target = checkbox.checked ? doneList : activeList;
-            target.appendChild(item);
-            doneCount.setText(String(doneList.children.length));
+            item.remove();
             activeCount.setText(String(activeList.children.length));
-            void this.plugin.toggleTodoCheckbox(todo.path, todo.text, checkbox.checked);
+            void this.plugin.toggleTodoCheckbox(todo);
         };
 
         item.addEventListener('click', toggle);
         item.addEventListener('mouseenter', () => setHovered(toggle));
         item.addEventListener('mouseleave', () => setHovered(null));
+    }
+
+    private async openTarget(target: { path: string; subpath?: string }) {
+        const file = this.plugin.app.vault.getFileByPath(target.path);
+        if (!file) return;
+
+        await this.plugin.app.workspace.openLinkText(
+            target.subpath ? `${file.basename}#${target.subpath}` : file.basename,
+            target.path,
+            'tab'
+        );
     }
 
     private async openFileAtLine(filePath: string, line: number) {
@@ -132,7 +136,7 @@ export class TodoView extends ItemView {
             leaf = workspace.getLeaf('tab');
             await leaf.openFile(file);
         } else {
-            workspace.revealLeaf(leaf);
+            await workspace.revealLeaf(leaf);
         }
 
         if (leaf.view instanceof MarkdownView && leaf.view.editor) {

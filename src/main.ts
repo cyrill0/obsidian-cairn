@@ -3,6 +3,23 @@ import { DEFAULT_SETTINGS, TodoPluginSettings, TodoSettingTab } from './settings
 import { TODO_VIEW_TYPE, TodoView, TodoEntry } from './view';
 import { todoHighlighter } from './highlighter';
 
+export const ANCHOR_REGEX = /\s*%%tid:([a-zA-Z0-9]+)%%/;
+
+export function extractAnchor(text: string): { cleanText: string; anchorId?: string } {
+    const match = text.match(ANCHOR_REGEX);
+    if (match && match[1]) {
+        return {
+            cleanText: text.replace(ANCHOR_REGEX, '').trim(),
+            anchorId: match[1],
+        };
+    }
+    return { cleanText: text.trim() };
+}
+
+export function generateAnchorId(): string {
+    return Math.random().toString(36).substring(2, 8);
+}
+
 export default class TodoPlugin extends Plugin {
     settings!: TodoPluginSettings;
     allTodos: TodoEntry[] = [];
@@ -11,7 +28,7 @@ export default class TodoPlugin extends Plugin {
         (file: TFile) => {
             this.scanFileForTodos(file).catch(console.error);
         },
-        1000,
+        1500,
         true
     );
 
@@ -20,6 +37,38 @@ export default class TodoPlugin extends Plugin {
     private lock(path: string) {
         this.locks.set(path, (this.locks.get(path) ?? 0) + 1);
     }
+    private findTargetLineIndex(lines: string[], todo: TodoEntry): number {
+        // 1. Escalated case: If an anchor exists, match strictly by ID
+        if (todo.anchorId) {
+            const anchorTag = `%%tid:${todo.anchorId}%%`;
+            const index = lines.findIndex((l) => l.includes(anchorTag));
+            if (index !== -1) return index;
+        }
+
+        // 2. Common case: Find by exact clean text
+        const matches: number[] = [];
+        for (let i = 0; i < lines.length; i++) {
+            const { cleanText } = extractAnchor(lines[i]!);
+            if (cleanText === todo.text) {
+                matches.push(i);
+            }
+        }
+
+        // Exactly one match found (safe to mutate directly)
+        if (matches.length === 1) {
+            return matches[0]!;
+        }
+
+        // 3. Fallback: If multiple unanchored matches collide, use the closest line hint
+        if (matches.length > 1) {
+            if (matches.includes(todo.line)) return todo.line;
+            return matches.reduce((prev, curr) =>
+                Math.abs(curr - todo.line) < Math.abs(prev - todo.line) ? curr : prev
+            );
+        }
+
+        return -1;
+    }
 
     private unlock(path: string) {
         const n = (this.locks.get(path) ?? 1) - 1;
@@ -27,58 +76,23 @@ export default class TodoPlugin extends Plugin {
         else this.locks.set(path, n);
     }
 
-    async toggleTodoCheckbox(filePath: string, originalLineText: string, isChecked: boolean) {
-        const file = this.app.vault.getFileByPath(filePath);
+    async toggleTodoCheckbox(todo: TodoEntry) {
+        const file = this.app.vault.getFileByPath(todo.path);
         if (!file) return;
 
-        const newLineText = isChecked
-            ? originalLineText.replace(/\b(TODO|DONE)(:?)/, 'DONE$2')
-            : originalLineText.replace(/\b(TODO|DONE)(:?)/, 'TODO$2');
-
-        const todoIndex = this.allTodos.findIndex(t => t.path === filePath && t.text === originalLineText);
-        if (todoIndex !== -1) {
-            this.allTodos[todoIndex]!.text = newLineText;
-        }
-
-        this.lock(filePath);
+        this.lock(todo.path);
         try {
-            await this.app.vault.process(file, (content) => content.replace(originalLineText, newLineText));
+            await this.app.vault.process(file, (content) => {
+                const lines = content.split('\n');
+                const targetIndex = this.findTargetLineIndex(lines, todo);
+                if (targetIndex === -1) return content;
+
+                lines.splice(targetIndex, 1);
+                return lines.join('\n');
+            });
         } finally {
-            this.unlock(filePath);
+            this.unlock(todo.path);
         }
-    }
-
-    async deleteCompletedTodos() {
-        const completedPaths = new Set(
-            this.allTodos.filter(t => /\bDONE:?/.test(t.text)).map(t => t.path)
-        );
-
-        for (const filePath of completedPaths) {
-            const file = this.app.vault.getFileByPath(filePath);
-            if (!file) continue;
-
-            this.lock(filePath);
-            try {
-                await this.app.vault.process(file, (content) =>
-                    content.split('\n').filter(line => !/\bDONE:?/.test(line)).join('\n')
-                );
-
-                const newContent = await this.app.vault.read(file);
-                const todosFromFile: TodoEntry[] = newContent
-                    .split('\n')
-                    .map((line, index) => ({ line: index, text: line.trim(), filename: file.basename, path: file.path }))
-                    .filter((entry) => /\b(TODO|DONE):?/.test(entry.text));
-
-                this.allTodos = [
-                    ...this.allTodos.filter((t) => t.path !== filePath),
-                    ...todosFromFile,
-                ];
-            } finally {
-                this.unlock(filePath);
-            }
-        }
-
-        this.refreshTodoView();
     }
 
     async onload() {
@@ -159,23 +173,95 @@ export default class TodoPlugin extends Plugin {
     async loadAllTodos() {
         this.allTodos = [];
         for (const file of this.app.vault.getMarkdownFiles()) {
-            await this.scanFileForTodos(file);
+            await this.scanFileForTodos(file, false);
         }
+        this.refreshTodoView();
     }
 
-    async scanFileForTodos(file: TFile) {
+    async scanFileForTodos(file: TFile, shouldRefresh = true) {
         const content = await this.app.vault.cachedRead(file);
-        const todosFromFile: TodoEntry[] = content
-            .split('\n')
-            .map((line, index) => ({ line: index, text: line.trim(), filename: file.basename, path: file.path }))
-            .filter((entry) => /\b(TODO|DONE):?/.test(entry.text));
+        const lines = content.split('\n');
+
+        interface ParsedItem {
+            lineIndex: number;
+            cleanText: string;
+            anchorId?: string;
+        }
+
+        const parsed: ParsedItem[] = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i]!;
+            if (/\b(TODO|DONE):?/.test(line)) {
+                const { cleanText, anchorId } = extractAnchor(line);
+                parsed.push({
+                    lineIndex: i,
+                    cleanText,
+                    anchorId,
+                });
+            }
+        }
+
+        // Count occurrences to detect collisions
+        const counts = new Map<string, number>();
+        for (const item of parsed) {
+            counts.set(item.cleanText, (counts.get(item.cleanText) ?? 0) + 1);
+        }
+
+        // Escalation: inject hidden markers ONLY into colliding lines that lack one
+        let modified = false;
+        for (const item of parsed) {
+            const count = counts.get(item.cleanText) ?? 0;
+            if (count > 1 && !item.anchorId) {
+                item.anchorId = generateAnchorId();
+                lines[item.lineIndex] = `${lines[item.lineIndex]} %%tid:${item.anchorId}%%`;
+                modified = true;
+            }
+        }
+
+        if (modified) {
+            this.lock(file.path);
+            try {
+                await this.app.vault.process(file, () => lines.join('\n'));
+            } finally {
+                this.unlock(file.path);
+            }
+        }
+
+        const links = this.app.metadataCache.getFileCache(file)?.links ?? [];
+
+        const todosFromFile: TodoEntry[] = parsed.map((item) => {
+            const link = links.find((l) => l.position.start.line === item.lineIndex);
+            let target: TodoEntry['target'];
+            if (link) {
+                const linkedFile = this.app.metadataCache.getFirstLinkpathDest(link.link.split('#')[0]!, file.path);
+                if (linkedFile) {
+                    const subpath = link.link.includes('#') ? link.link.split('#').slice(1).join('#') : undefined;
+                    target = {
+                        path: linkedFile.path,
+                        subpath,
+                        display: link.displayText || linkedFile.basename,
+                    };
+                }
+            }
+            return {
+                line: item.lineIndex,
+                text: item.cleanText,
+                filename: file.basename,
+                path: file.path,
+                anchorId: item.anchorId,
+                target,
+            };
+        });
 
         this.allTodos = [
             ...this.allTodos.filter((t) => t.path !== file.path),
             ...todosFromFile,
         ];
 
-        this.refreshTodoView();
+        if (shouldRefresh) {
+            this.refreshTodoView();
+        }
     }
 
     refreshTodoView() {
@@ -188,14 +274,14 @@ export default class TodoPlugin extends Plugin {
         const existingLeaf = workspace.getLeavesOfType(TODO_VIEW_TYPE)[0];
 
         if (existingLeaf) {
-            workspace.revealLeaf(existingLeaf);
+            await workspace.revealLeaf(existingLeaf);
             return;
         }
 
         const leaf: WorkspaceLeaf | null = workspace.getLeftLeaf(false);
         if (leaf) {
             await leaf.setViewState({ type: TODO_VIEW_TYPE, active: true });
-            workspace.revealLeaf(leaf);
+            await workspace.revealLeaf(leaf);
         }
     }
 
