@@ -33,3 +33,4 @@ export function stripAnchors(text: string): string {
     if (!text.includes('%%')) return text.trim();
     return text.replace(ANCHOR_REGEX, '').trim();
 }
+
