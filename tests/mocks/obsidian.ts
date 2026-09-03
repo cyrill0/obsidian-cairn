@@ -1,3 +1,13 @@
+/**
+ * @file obsidian.ts (test mock)
+ * @description In-memory mock implementations of the Obsidian API for Node.js unit testing.
+ *
+ * During test execution (`npm test`), `scripts/run-tests.mjs` uses an esbuild resolver plugin
+ * to redirect imports of the external `obsidian` module to this file.
+ * This allows testing core plugin logic (vault scanning, frontmatter parsing, line editing)
+ * in pure Node.js without needing an Obsidian runtime or Electron.
+ */
+
 export class TAbstractFile {
 	path: string;
 
@@ -15,6 +25,7 @@ export class TFile extends TAbstractFile {
 		this.basename = path.split('/').at(-1)?.replace(/\.md$/, '') ?? path;
 	}
 }
+
 
 export class WorkspaceLeaf {}
 

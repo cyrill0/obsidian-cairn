@@ -1,5 +1,5 @@
 ---
 tags:
+- work
   - personal
 ---
-TODO: Check the nested sample note

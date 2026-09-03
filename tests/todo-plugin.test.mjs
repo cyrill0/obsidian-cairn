@@ -1,8 +1,24 @@
+/**
+ * @file todo-plugin.test.mjs
+ * @description Unit test suite for Cairn plugin core functionality.
+ *
+ * Tests the plugin's note scanning, anchor stripping, tag extraction, fuzzy line matching,
+ * YAML frontmatter manipulation, and custom keyword filtering using Node.js's native test runner.
+ */
+
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import TodoPlugin from '../src/main.ts';
 import { TFile } from 'obsidian';
 
+/**
+ * Creates an in-memory mock Obsidian App environment for a test case.
+ *
+ * @param options - Initial test fixture parameters.
+ * @param options.content - Initial note Markdown content.
+ * @param options.tags - Optional array or string representing frontmatter tags.
+ * @returns Object containing the mocked app, file fixture, and a helper to inspect current content.
+ */
 function createApp({ content, tags = [] }) {
 	const file = new TFile('projects/plan.md');
 	let storedContent = content;
@@ -29,6 +45,7 @@ function createApp({ content, tags = [] }) {
 }
 
 test('scans markers and preserves their source locations', async () => {
+
 	const fixture = createApp({
 		content: [
 			'Introduction',

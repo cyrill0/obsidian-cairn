@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(raw.githubusercontent.com)",
+      "WebFetch(github.com)",
+      "Read(//opt/**)",
+      "computer_use__list_apps",
+      "WebFetch(docs.obsidian.md)"
+    ]
+  },
+  "$version": 4
+}
