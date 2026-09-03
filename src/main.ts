@@ -1,4 +1,4 @@
-import { Plugin, TFile, TAbstractFile, WorkspaceLeaf } from 'obsidian';
+import { Plugin, TFile, TAbstractFile, WorkspaceLeaf, debounce } from 'obsidian';
 import { DEFAULT_SETTINGS, TodoPluginSettings, TodoSettingTab } from './settings';
 import { TODO_VIEW_TYPE, TodoView, TodoEntry } from './view';
 import { todoHighlighter } from './highlighter';
@@ -62,6 +62,63 @@ export default class TodoPlugin extends Plugin {
         return -1;
     }
 
+    private explorerObservers: MutationObserver[] = [];
+    private updateFileExplorerDebounced = debounce(() => this.decorateFileExplorer(), 250, true);
+
+    // 2. The Decorator: Compares the DOM against your allTodos array
+    private decorateFileExplorer() {
+        // Get all files that currently have an UNFINISHED todo
+        const activePaths = new Set<string>();
+        for (const todo of this.allTodos) {
+            if (!/\bDONE:?/.test(todo.text)) {
+                activePaths.add(todo.path);
+            }
+        }
+
+        // Find all file explorer panels (users can have multiple open!)
+        const leaves = this.app.workspace.getLeavesOfType('file-explorer');
+
+        for (const leaf of leaves) {
+            // Find every file element currently rendered in the tree
+            const fileNodes = leaf.view.containerEl.querySelectorAll('.nav-file-title');
+
+            fileNodes.forEach(node => {
+                const path = node.getAttribute('data-path');
+                if (!path) return;
+
+                // Toggle the CSS class based on our memory state
+                if (activePaths.has(path)) {
+                    node.classList.add('has-active-todos');
+                } else {
+                    node.classList.remove('has-active-todos');
+                }
+            });
+        }
+    }
+
+    private setupFileExplorerObserver() {
+        // Disconnect old observers to prevent memory leaks when layout changes
+        this.explorerObservers.forEach(obs => obs.disconnect());
+        this.explorerObservers = [];
+
+        const leaves = this.app.workspace.getLeavesOfType('file-explorer');
+        for (const leaf of leaves) {
+            const observer = new MutationObserver(() => {
+                // When a user opens a folder, Obsidian renders new DOM nodes.
+                // We debounce the decorator so it doesn't freeze the app during rapid clicks.
+                this.updateFileExplorerDebounced();
+            });
+
+            // ONLY watch for children being added/removed. 
+            // Do NOT watch attributes, or our own class injection will cause an infinite loop!
+            observer.observe(leaf.view.containerEl, { childList: true, subtree: true });
+            this.explorerObservers.push(observer);
+        }
+
+        // Run it once immediately to style currently visible files
+        this.updateFileExplorerDebounced();
+    }
+
     private unlock(path: string) {
         const n = (this.locks.get(path) ?? 1) - 1;
         if (n <= 0) this.locks.delete(path);
@@ -78,6 +135,7 @@ export default class TodoPlugin extends Plugin {
                 const lines = content.split('\n');
                 const targetIndex = this.findTargetLineIndex(lines, todo);
                 if (targetIndex === -1) return content;
+                this.updateFileExplorerDebounced();
 
                 lines.splice(targetIndex, 1);
                 return lines.join('\n');
@@ -88,6 +146,7 @@ export default class TodoPlugin extends Plugin {
     }
 
     async onload() {
+        await this.loadSettings();
         await this.loadSettings();
 
         this.registerView(TODO_VIEW_TYPE, (leaf) => new TodoView(leaf, this));
@@ -156,14 +215,23 @@ export default class TodoPlugin extends Plugin {
                 node.parentNode?.replaceChild(wrapper, node);
             }
         });
+        this.registerEvent(this.app.workspace.on('layout-change', () => this.setupFileExplorerObserver()));
+        this.setupFileExplorerObserver();
     }
 
-    onunload() { /* Obsidian cleans up leaves automatically */ }
+    onunload() {
+        this.app.workspace.detachLeavesOfType(TODO_VIEW_TYPE);
+
+        // ADD THIS: Kill the observers
+        this.explorerObservers.forEach(obs => obs.disconnect());
+    }
 
     async loadAllTodos() {
         this.allTodos = [];
-        for (const file of this.app.vault.getMarkdownFiles()) {
-            await this.scanFileForTodos(file, false);
+        const files = this.app.vault.getMarkdownFiles();
+        for (let i = 0; i < files.length; i++) {
+            if (i % 10 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+            await this.scanFileForTodos(files[i]!, false);
         }
         this.refreshTodoView();
     }
@@ -218,31 +286,14 @@ export default class TodoPlugin extends Plugin {
             }
         }
 
-        const links = this.app.metadataCache.getFileCache(file)?.links ?? [];
-
-        const todosFromFile: TodoEntry[] = parsed.map((item) => {
-            const link = links.find((l) => l.position.start.line === item.lineIndex);
-            let target: TodoEntry['target'];
-            if (link) {
-                const linkedFile = this.app.metadataCache.getFirstLinkpathDest(link.link.split('#')[0]!, file.path);
-                if (linkedFile) {
-                    target = {
-                        linktext: link.link,
-                        sourcePath: file.path,
-                        display: link.displayText || linkedFile.basename,
-                    };
-                }
-            }
-            return {
-                line: item.lineIndex,
-                text: item.cleanText,
-                filename: file.basename,
-                path: file.path,
-                anchorId: item.anchorId,
-                target,
-                tag: (this.app.metadataCache.getFileCache(file)?.frontmatter?.tags as string[] | undefined)?.[0],
-            };
-        });
+        const todosFromFile: TodoEntry[] = parsed.map((item) => ({
+            line: item.lineIndex,
+            text: item.cleanText,
+            filename: file.basename,
+            path: file.path,
+            anchorId: item.anchorId,
+            tag: (this.app.metadataCache.getFileCache(file)?.frontmatter?.tags as string[] | undefined)?.[0],
+        }));
 
         this.allTodos = [
             ...this.allTodos.filter((t) => t.path !== file.path),
@@ -252,6 +303,7 @@ export default class TodoPlugin extends Plugin {
         if (shouldRefresh) {
             this.refreshTodoView();
         }
+        this.updateFileExplorerDebounced();
     }
 
     refreshTodoView() {

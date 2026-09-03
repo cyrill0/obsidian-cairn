@@ -3,19 +3,12 @@ import type TodoPlugin from './main';
 
 export const TODO_VIEW_TYPE = 'todo-view';
 
-export interface TodoTarget {
-    linktext: string;
-    sourcePath: string;
-    display: string;
-}
-
 export interface TodoEntry {
     text: string;
     filename: string;
     path: string;
     line: number;
     anchorId?: string;
-    target?: TodoTarget;
     tag?: string;
 }
 
@@ -141,7 +134,46 @@ export class TodoView extends ItemView {
         checkIcon.setText('○');
 
         const textEl = item.createSpan({ cls: 'todo-text' });
-        textEl.setText(todo.text.replace(/^[-*]\s*(\[.\]\s*)?/, ''));
+        const raw = todo.text.replace(/^[-*]\s*(\[.\]\s*)?/, '');
+        const linkRegex = /\[\[([^\]]+)\]\]/g;
+        let last = 0;
+        let m;
+        while ((m = linkRegex.exec(raw)) !== null) {
+            if (m.index > last) textEl.appendText(raw.slice(last, m.index));
+            const linkText = m[1]!;
+            const display = linkText.includes('|') ? linkText.split('|')[1]! : linkText.split('#')[0]!;
+            const linkSpan = textEl.createSpan({ cls: 'todo-inline-link', text: display });
+            linkSpan.addEventListener('mouseenter', () => {
+                let el: HTMLElement = linkSpan;
+                let left = el.offsetLeft + el.offsetWidth;
+                let top = el.offsetTop;
+                while (el.offsetParent && el.offsetParent !== item) {
+                    el = el.offsetParent as HTMLElement;
+                    left += el.offsetLeft;
+                    top += el.offsetTop;
+                }
+                linkIcon.style.left = left + 'px';
+                linkIcon.style.top = top + 'px';
+                linkIcon.style.display = 'flex';
+                linkIcon.onclick = (e) => {
+                    e.stopPropagation();
+                    void this.plugin.app.workspace.openLinkText(linkText, todo.path, 'tab');
+                };
+            });
+            linkSpan.addEventListener('mouseleave', (e) => {
+                if (!linkIcon.contains(e.relatedTarget as Node)) linkIcon.style.display = 'none';
+            });
+            linkSpan.addEventListener('click', (e: MouseEvent) => {
+                e.stopPropagation();
+                void this.plugin.app.workspace.openLinkText(linkText, todo.path, 'tab');
+            });
+            last = m.index + m[0].length;
+        }
+        if (last < raw.length) textEl.appendText(raw.slice(last));
+
+        const linkIcon = item.createSpan({ cls: 'todo-link-icon', text: '↗' });
+        linkIcon.style.display = 'none';
+        linkIcon.addEventListener('mouseleave', () => { linkIcon.style.display = 'none'; });
 
         const sourceEl = item.createSpan({ text: todo.filename, cls: 'todo-source' });
         sourceEl.title = todo.path;
@@ -149,15 +181,6 @@ export class TodoView extends ItemView {
             e.stopPropagation();
             void this.openFileAtLine(todo.path, todo.line);
         });
-
-        if (todo.target) {
-            const targetEl = item.createSpan({ text: todo.target.display, cls: 'todo-target' });
-            targetEl.title = todo.target.linktext;
-            targetEl.addEventListener('click', (e: MouseEvent) => {
-                e.stopPropagation();
-                void this.openTarget(todo.target!);
-            });
-        }
 
         const toggle = () => {
             item.remove();
@@ -168,10 +191,6 @@ export class TodoView extends ItemView {
         item.addEventListener('click', toggle);
         item.addEventListener('mouseenter', () => setHovered(toggle));
         item.addEventListener('mouseleave', () => setHovered(null));
-    }
-
-    private async openTarget(target: TodoTarget) {
-        await this.plugin.app.workspace.openLinkText(target.linktext, target.sourcePath, 'tab');
     }
 
     private async openFileAtLine(filePath: string, line: number) {
