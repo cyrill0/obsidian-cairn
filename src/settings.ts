@@ -64,7 +64,7 @@ export class TodoSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Marker keyword')
-			.setDesc('Word that marks a to-do line. The vault is rescanned after changes. Editor highlights update on the next edit.')
+			.setDesc('Word that marks a to-do line. The vault is rescanned and editor highlights update after changes.')
 			.addText(text => text
 				.setPlaceholder('TODO')
 				.setValue(this.plugin.settings.todoKeyword)
@@ -74,6 +74,8 @@ export class TodoSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					// Debounced rescan triggers loadAllTodos() to re-index all vault notes
 					this.plugin.scheduleRescan();
+					// Trigger an update cycle across active editor views
+					this.app.workspace.updateOptions();
 				}));
 	}
 }

@@ -49,27 +49,34 @@ export function createTodoHighlighter(plugin: TodoPlugin) {
         /** The current set of decorations applied to the visible document ranges. */
         decorations: DecorationSet;
 
+        /** The marker keyword setting used when decorations were last built. */
+        private lastKeyword: string;
+
         /**
          * Initializes the highlighter when an editor view is mounted.
          *
          * @param view - The CodeMirror editor view instance.
          */
         constructor(view: EditorView) {
+            this.lastKeyword = plugin.settings?.todoKeyword || 'TODO';
             this.decorations = this.buildDecorations(view);
         }
 
         /**
          * Lifecycle hook called by CodeMirror after any transaction or view update.
          *
-         * Only rebuilds decorations if:
+         * Rebuilds decorations if:
          * 1. `update.docChanged` - The text content was edited.
          * 2. `update.viewportChanged` - The user scrolled or the editor window was resized,
          *    revealing new lines that require decoration.
+         * 3. The marker keyword setting changed in plugin settings.
          *
          * @param update - Description of changes in this update cycle.
          */
         update(update: ViewUpdate) {
-            if (update.docChanged || update.viewportChanged) {
+            const currentKeyword = plugin.settings?.todoKeyword || 'TODO';
+            if (update.docChanged || update.viewportChanged || currentKeyword !== this.lastKeyword) {
+                this.lastKeyword = currentKeyword;
                 this.decorations = this.buildDecorations(update.view);
             }
         }
