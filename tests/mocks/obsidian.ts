@@ -63,10 +63,16 @@ export class ItemView {
 
 export class MarkdownView {}
 
+export class FileManager {
+	async processFrontMatter(_file: TFile, _fn: (fm: Record<string, unknown>) => void) {}
+}
+
 export function setIcon() {}
 
-export function debounce<T extends (...args: never[]) => unknown>(callback: T): T {
-	return callback;
+export function debounce<T extends (...args: never[]) => unknown>(callback: T): T & { cancel: () => void } {
+	const fn = callback as T & { cancel: () => void };
+	fn.cancel = () => {};
+	return fn;
 }
 
 export class Setting {

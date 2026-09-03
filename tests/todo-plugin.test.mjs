@@ -22,11 +22,12 @@ import { TFile } from 'obsidian';
 function createApp({ content, tags = [] }) {
 	const file = new TFile('projects/plan.md');
 	let storedContent = content;
+	let currentTags = tags;
 
 	return {
 		app: {
 			metadataCache: {
-				getFileCache: () => ({ frontmatter: { tags } }),
+				getFileCache: () => ({ frontmatter: { tags: currentTags } }),
 			},
 			vault: {
 				cachedRead: async () => storedContent,
@@ -35,17 +36,30 @@ function createApp({ content, tags = [] }) {
 					storedContent = update(storedContent);
 				},
 			},
+			fileManager: {
+				processFrontMatter: async (_target, update) => {
+					const fmMatch = storedContent.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+					if (!fmMatch) return;
+					const fm = { tags: Array.isArray(currentTags) ? [...currentTags] : currentTags };
+					update(fm);
+					currentTags = fm.tags;
+					const tagsStr = Array.isArray(currentTags)
+						? `tags:\n${currentTags.map(t => `  - ${t}`).join('\n')}`
+						: `tags: ${currentTags}`;
+					storedContent = storedContent.replace(/^---\r?\n[\s\S]*?\r?\n---/, `---\n${tagsStr}\n---`);
+				},
+			},
 			workspace: {
 				getLeavesOfType: () => [],
 			},
 		},
 		file,
 		getContent: () => storedContent,
+		getTags: () => currentTags,
 	};
 }
 
 test('scans markers and preserves their source locations', async () => {
-
 	const fixture = createApp({
 		content: [
 			'Introduction',
@@ -86,6 +100,7 @@ test('removes a marker after nearby lines have shifted', async () => {
 		filename: 'plan',
 		line: 1,
 		path: fixture.file.path,
+		tag: undefined,
 		text: 'TODO: Keep this',
 	};
 	plugin.allTodos = [todoToKeep, todoToRemove];
@@ -114,30 +129,99 @@ test('removes a marker from allTodos even if the line was already removed from t
 	assert.deepEqual(plugin.allTodos, []);
 });
 
-test('updates the first tag in inline and block frontmatter lists', async (context) => {
-	for (const [name, content, expected] of [
-		[
-			'inline list',
-			'---\ntags: [old, preserved]\n---\nTODO: Test',
-			'---\ntags: [new, preserved]\n---\nTODO: Test',
-		],
-		[
-			'block list',
-			'---\ntags:\n  - old\n  - preserved\n---\nTODO: Test',
-			'---\ntags:\n- new\n  - preserved\n---\nTODO: Test',
-		],
-	]) {
-		await context.test(name, async () => {
-			const fixture = createApp({ content });
-			const plugin = new TodoPlugin(fixture.app);
-			const todo = { filename: 'plan', line: 3, path: fixture.file.path, text: 'TODO: Test', tag: 'old' };
+test('updates the first tag in frontmatter via processFrontMatter', async () => {
+	const fixture = createApp({
+		content: '---\ntags:\n  - old\n  - preserved\n---\nTODO: Test',
+		tags: ['old', 'preserved'],
+	});
+	const plugin = new TodoPlugin(fixture.app);
+	const todo = { filename: 'plan', line: 4, path: fixture.file.path, text: 'TODO: Test', tag: 'old' };
 
-			await plugin.updateTodoTag(todo, 'new');
+	await plugin.updateTodoTag(todo, 'new');
 
-			assert.equal(fixture.getContent(), expected);
-			assert.equal(todo.tag, 'new');
-		});
-	}
+	assert.equal(todo.tag, 'new');
+	assert.deepEqual(fixture.getTags(), ['new', 'preserved']);
+});
+
+test('rejects invalid tag values containing newlines or special characters (H1 protection)', async () => {
+	const fixture = createApp({
+		content: '---\ntags:\n  - old\n---\nTODO: Test',
+		tags: ['old'],
+	});
+	const plugin = new TodoPlugin(fixture.app);
+	const todo = { filename: 'plan', line: 3, path: fixture.file.path, text: 'TODO: Test', tag: 'old' };
+
+	await plugin.updateTodoTag(todo, 'bad\ncssclasses: [evil]');
+
+	assert.equal(todo.tag, 'old');
+	assert.deepEqual(fixture.getTags(), ['old']);
+});
+
+test('strips only marker keyword on prose lines, preserving surrounding text (M2 protection)', async () => {
+	const fixture = createApp({
+		content: ['The 2026 budget was approved after the TODO: review by finance.'].join('\n'),
+	});
+	const plugin = new TodoPlugin(fixture.app);
+	const todo = {
+		filename: 'plan',
+		line: 0,
+		path: fixture.file.path,
+		text: 'The 2026 budget was approved after the TODO: review by finance.',
+	};
+	plugin.allTodos = [todo];
+
+	await plugin.toggleTodoCheckbox(todo);
+
+	assert.equal(fixture.getContent(), 'The 2026 budget was approved after the review by finance.');
+	assert.deepEqual(plugin.allTodos, []);
+});
+
+test('deletes entire line for markdown task or list items', async () => {
+	const fixture = createApp({
+		content: ['- [ ] TODO: Buy groceries', 'Next task'].join('\n'),
+	});
+	const plugin = new TodoPlugin(fixture.app);
+	const todo = {
+		filename: 'plan',
+		line: 0,
+		path: fixture.file.path,
+		text: '- [ ] TODO: Buy groceries',
+	};
+	plugin.allTodos = [todo];
+
+	await plugin.toggleTodoCheckbox(todo);
+
+	assert.equal(fixture.getContent(), 'Next task');
+	assert.deepEqual(plugin.allTodos, []);
+});
+
+test('aborts fuzzy match when multiple identical lines exist in window (M3 protection)', async () => {
+	const fixture = createApp({
+		content: [
+			'Line 0',
+			'TODO: Duplicate item',
+			'Middle line',
+			'TODO: Duplicate item',
+			'Line 4',
+		].join('\n'),
+	});
+	const plugin = new TodoPlugin(fixture.app);
+	// Stale todo pointing at Line 2 (Middle line) between the two duplicates at 1 and 3
+	const staleTodo = {
+		filename: 'plan',
+		line: 2,
+		path: fixture.file.path,
+		text: 'TODO: Duplicate item',
+	};
+	plugin.allTodos = [staleTodo];
+
+	await plugin.toggleTodoCheckbox(staleTodo);
+
+	// Neither duplicate should be deleted because the match is ambiguous
+	assert.equal(
+		fixture.getContent(),
+		['Line 0', 'TODO: Duplicate item', 'Middle line', 'TODO: Duplicate item', 'Line 4'].join('\n')
+	);
 });
 
 test('does not alter a note without frontmatter when updating its tag', async () => {
@@ -165,13 +249,16 @@ test('does not write when the target file is missing', async () => {
 	assert.equal(fixture.getContent(), 'TODO: Test');
 });
 
-test('ignores non-array frontmatter tags', async () => {
-	const fixture = createApp({ content: 'TODO: Test', tags: 'work' });
-	const plugin = new TodoPlugin(fixture.app);
+test('ignores non-string frontmatter tags (M5 protection)', async () => {
+	const fixtureNumber = createApp({ content: 'TODO: Test', tags: [123] });
+	const pluginNumber = new TodoPlugin(fixtureNumber.app);
+	await pluginNumber.scanFileForTodos(fixtureNumber.file, false);
+	assert.equal(pluginNumber.allTodos[0]?.tag, undefined);
 
-	await plugin.scanFileForTodos(fixture.file, false);
-
-	assert.equal(plugin.allTodos[0]?.tag, undefined);
+	const fixtureObject = createApp({ content: 'TODO: Test', tags: [{ evil: 1 }] });
+	const pluginObject = new TodoPlugin(fixtureObject.app);
+	await pluginObject.scanFileForTodos(fixtureObject.file, false);
+	assert.equal(pluginObject.allTodos[0]?.tag, undefined);
 });
 
 test('uses the configured marker keyword', async () => {

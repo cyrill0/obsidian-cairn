@@ -19,10 +19,10 @@ import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@
 import type TodoPlugin from './main';
 
 /**
- * CodeMirror mark decoration that adds the `.todo-line` CSS class to the line span.
- * Styled in `styles.css` with an accent highlight color (e.g. orange background).
+ * CodeMirror mark decoration that adds the `.todo-line` CSS class around the
+ * matched to-do keyword. Styled in `styles.css` as a rounded, pill-like highlight.
  */
-const todoLineMark = Decoration.mark({ class: "todo-line" });
+const todoKeywordMark = Decoration.mark({ class: "todo-line" });
 
 /**
  * Escapes characters with special meaning in regular expressions.
@@ -94,20 +94,27 @@ export function createTodoHighlighter(plugin: TodoPlugin) {
             // Match the keyword with word boundaries and an optional trailing colon
             const regex = new RegExp(`\\b${escapeRegex(keyword)}:?`, 'g');
 
-            let lastLineFrom = -1;
+            // Track lines already highlighted to avoid duplicate marks on the same line
+            const highlightedLines = new Set<number>();
 
             for (const { from, to } of view.visibleRanges) {
                 const text = view.state.doc.sliceString(from, to);
                 let match;
                 while ((match = regex.exec(text))) {
                     const wordStart = from + match.index;
-                    // Resolve line boundaries for the matched position
                     const line = view.state.doc.lineAt(wordStart);
-                    // Avoid duplicate line ranges if multiple markers exist on the same line
-                    if (line.from <= lastLineFrom) continue;
-                    lastLineFrom = line.from;
-                    // Mark the entire line containing the keyword
-                    builder.add(line.from, line.to, todoLineMark);
+
+                    // Only highlight the first keyword match on each line
+                    if (highlightedLines.has(line.number)) continue;
+                    highlightedLines.add(line.number);
+
+                    // Trim trailing whitespace so the highlight ends at the last
+                    // meaningful character of the to-do line
+                    const lineText = view.state.doc.sliceString(line.from, line.to);
+                    const end = line.from + lineText.trimEnd().length;
+
+                    // Highlight from the keyword through the rest of the line
+                    builder.add(wordStart, end, todoKeywordMark);
                 }
             }
             return builder.finish();

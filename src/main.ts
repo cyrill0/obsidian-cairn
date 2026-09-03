@@ -48,6 +48,17 @@ import { createTodoHighlighter } from './highlighter';
  * Format: `%%tid:<alphanumeric>%%` (Obsidian comment syntax).
  * Used to strip internal metadata tags from display text and line comparisons.
  */
+/**
+ * Allowed characters in Obsidian tags (alphanumerics, underscores, hyphens, and slashes for nested tags).
+ * Rejects newlines, quotes, and YAML delimiter injection attempts.
+ */
+export const TAG_VALIDATION_REGEX = new RegExp('^[a-zA-Z0-9_/-]+$');
+
+/**
+ * Regular expression matching internal task anchor comments in Markdown notes.
+ * Format: `%%tid:<alphanumeric>%%` (Obsidian comment syntax).
+ * Used to strip internal metadata tags from display text and line comparisons.
+ */
 const ANCHOR_REGEX = /\s*%%tid:[a-zA-Z0-9]+%%/g;
 
 /**
@@ -85,54 +96,63 @@ export default class TodoPlugin extends Plugin {
      */
     allTodos: TodoEntry[] = [];
 
-    /**
-     * Reference-counting map of active file path locks.
-     * Prevents concurrent async write operations from conflicting on the same note file.
-     */
-    private locks = new Map<string, number>();
+    /** Flag indicating if the plugin is currently unloaded, used to cancel in-flight async loops. */
+    private isUnloaded = false;
 
     /**
-     * Acquires a write lock for a specific file path.
-     * Increments the reference count for that path.
-     *
-     * @param path - The vault-relative file path to lock.
+     * Per-path Promise mutex queue ensuring sequential, atomic writes to notes.
      */
-    private lock(path: string) {
-        this.locks.set(path, (this.locks.get(path) ?? 0) + 1);
-    }
+    private fileMutexes = new Map<string, Promise<void>>();
 
     /**
-     * Releases a write lock for a specific file path.
-     * Decrements the reference count and removes the entry when the count reaches zero.
+     * Executes an async file operation exclusively under a path-specific mutex.
      *
-     * @param path - The vault-relative file path to unlock.
+     * @param path - Vault-relative note path.
+     * @param fn - Async callback to execute while holding the lock.
      */
-    private unlock(path: string) {
-        const n = (this.locks.get(path) ?? 1) - 1;
-        if (n <= 0) this.locks.delete(path);
-        else this.locks.set(path, n);
+    private async withFileLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+        const prev = this.fileMutexes.get(path) ?? Promise.resolve();
+        let release: () => void;
+        const next = new Promise<void>((resolve) => { release = resolve; });
+        this.fileMutexes.set(path, prev.then(() => next, () => next));
+        try {
+            await prev;
+            return await fn();
+        } finally {
+            release!();
+            if (this.fileMutexes.get(path) === next) {
+                this.fileMutexes.delete(path);
+            }
+        }
     }
 
     /**
      * Locates the exact 0-indexed line in a note corresponding to a given `TodoEntry`.
      *
      * Because users may edit notes while the sidebar is open, line numbers can shift up or down.
-     * This method applies a fuzzy proximity search:
+     * This method applies proximity search with ambiguity protection:
      * 1. Checks the exact recorded line index first.
-     * 2. If not matched, searches outward within a +/- 5 line window.
+     * 2. Searches outward within a +/- 5 line window.
+     * 3. If multiple identical matches are found in the window, returns -1 to avoid destroying
+     *    the wrong line.
      *
      * @param lines - Array of text lines in the file.
      * @param todo - The to-do entry to locate.
-     * @returns The 0-based line index in `lines`, or -1 if the line cannot be found.
+     * @returns The 0-based line index in `lines`, or -1 if the line cannot be unambiguously found.
      */
     private findTargetLineIndex(lines: string[], todo: TodoEntry): number {
         if (lines[todo.line] !== undefined && stripAnchors(lines[todo.line]!) === todo.text) return todo.line;
         // Line may have shifted slightly due to edits — search nearby lines (+/- 5 lines)
+        const matches: number[] = [];
         for (let delta = 1; delta <= 5; delta++) {
             for (const i of [todo.line - delta, todo.line + delta]) {
-                if (i >= 0 && i < lines.length && stripAnchors(lines[i]!) === todo.text) return i;
+                if (i >= 0 && i < lines.length && stripAnchors(lines[i]!) === todo.text) {
+                    if (!matches.includes(i)) matches.push(i);
+                }
             }
         }
+        // Only accept if exactly one match exists in the window; ambiguous matches return -1
+        if (matches.length === 1) return matches[0]!;
         return -1;
     }
 
@@ -229,36 +249,41 @@ export default class TodoPlugin extends Plugin {
         if (!file) return;
 
         let targetIndex = -1;
-        this.lock(todo.path);
-        try {
+        await this.withFileLock(todo.path, async () => {
             await this.app.vault.process(file, (content) => {
                 const lines = content.split('\n');
                 targetIndex = this.findTargetLineIndex(lines, todo);
                 if (targetIndex === -1) return content;
 
-                // Delete the entire line from the file
-                lines.splice(targetIndex, 1);
+                const line = lines[targetIndex]!;
+                const keyword = this.settings?.todoKeyword || 'TODO';
+                const isTaskOrList = /^[-*]\s*(\[[ x]\]\s*)?/i.test(line);
+                const isStandaloneMarker = new RegExp(`^\\s*${escapeRegex(keyword)}:?\\s*`, 'i').test(line);
+
+                if (isTaskOrList || isStandaloneMarker) {
+                    // Delete the entire line if it's a task/list bullet or standalone marker line
+                    lines.splice(targetIndex, 1);
+                } else {
+                    // Prose line with embedded marker: strip only the marker keyword and trailing colon/space
+                    lines[targetIndex] = line.replace(new RegExp(`\\b${escapeRegex(keyword)}:?\\s*`), '');
+                }
+
                 return lines.join('\n');
             });
-        } finally {
-            this.unlock(todo.path);
-        }
+        });
 
-        // Remove the completed to-do item from the in-memory cache so the sidebar view updates
-        this.allTodos = this.allTodos.filter(
-            (t) => t !== todo && !(t.path === todo.path && t.text === todo.text && (targetIndex === -1 || t.line === targetIndex))
-        );
-
-        // Adjust 0-based line numbers for any subsequent to-dos in the same file
         if (targetIndex !== -1) {
-            for (const t of this.allTodos) {
-                if (t.path === todo.path && t.line > targetIndex) {
-                    t.line--;
-                }
-            }
+            // Remove the completed to-do item from the in-memory cache
+            this.allTodos = this.allTodos.filter(
+                (t) => t !== todo && !(t.path === todo.path && t.text === todo.text && t.line === targetIndex)
+            );
+            // Rescan this file to keep remaining line numbers and state 100% in sync with disk
+            await this.scanFileForTodos(file, false);
+            this.updateFileExplorerDebounced();
+        } else {
+            // Line was not found (stale cache / edited externally) - reconcile file with disk
+            await this.scanFileForTodos(file, false);
         }
-
-        this.updateFileExplorerDebounced();
     }
 
     /**
@@ -332,7 +357,15 @@ export default class TodoPlugin extends Plugin {
         // Register Markdown Reading Mode post-processor to style keyword matches as badge pills
         this.registerMarkdownPostProcessor((element) => {
             const keyword = this.settings?.todoKeyword || 'TODO';
-            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null);
+            // Exclude text nodes inside code blocks, pre tags, and inline code
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+                acceptNode(node) {
+                    if ((node.parentElement as HTMLElement)?.closest('pre, code, .HyperMD-codeblock')) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    return NodeFilter.FILTER_ACCEPT;
+                },
+            });
             const regex = new RegExp(`\\b${escapeRegex(keyword)}:?`, 'g');
             let node;
 
@@ -365,9 +398,12 @@ export default class TodoPlugin extends Plugin {
 
     /**
      * Plugin lifecycle hook called by Obsidian when the plugin is disabled or reloaded.
-     * Cleans up all active MutationObservers to prevent memory leaks.
+     * Cancels active timers, pending rescans, and cleans up all active MutationObservers.
      */
     onunload() {
+        this.isUnloaded = true;
+        this.updateFileExplorerDebounced.cancel();
+        this.scheduleRescan.cancel();
         this.explorerObservers.forEach(obs => obs.disconnect());
     }
 
@@ -383,11 +419,15 @@ export default class TodoPlugin extends Plugin {
         this.allTodos = [];
         const files = this.app.vault.getMarkdownFiles();
         for (let i = 0; i < files.length; i++) {
+            if (this.isUnloaded) return;
             // Cooperative multitasking: yield to event loop every 10 files
             if (i % 10 === 0) await new Promise(resolve => window.setTimeout(resolve, 0));
+            if (this.isUnloaded) return;
             await this.scanFileForTodos(files[i]!, false);
         }
-        this.refreshTodoView();
+        if (!this.isUnloaded) {
+            this.refreshTodoView();
+        }
     }
 
     /**
@@ -402,9 +442,14 @@ export default class TodoPlugin extends Plugin {
      */
     async scanFileForTodos(file: TFile, shouldRefresh = true) {
         const content = await this.app.vault.cachedRead(file);
-        // Extract frontmatter tags from metadata cache; use the first tag if an array is defined
+        // Extract frontmatter tags from metadata cache; use the first valid string tag
         const rawTags: unknown = this.app.metadataCache.getFileCache(file)?.frontmatter?.tags;
-        const tag = Array.isArray(rawTags) ? (rawTags as string[])[0] : undefined;
+        let tag: string | undefined;
+        if (Array.isArray(rawTags) && typeof rawTags[0] === 'string' && TAG_VALIDATION_REGEX.test(rawTags[0])) {
+            tag = rawTags[0];
+        } else if (typeof rawTags === 'string' && TAG_VALIDATION_REGEX.test(rawTags)) {
+            tag = rawTags;
+        }
 
         const keyword = this.settings?.todoKeyword || 'TODO';
         const regex = new RegExp(`\\b${escapeRegex(keyword)}:?`);
@@ -458,56 +503,34 @@ export default class TodoPlugin extends Plugin {
     /**
      * Updates the primary frontmatter tag of a note when a to-do is dragged into a different tag group.
      *
-     * Modifies the YAML frontmatter on disk via `app.vault.process()`:
-     * - Handles inline array syntax: `tags: [oldTag, tag2]` -> `tags: [newTag, tag2]`
-     * - Handles YAML list block syntax:
-     *   ```yaml
-     *   tags:
-     *     - oldTag
-     *     - tag2
-     *   ```
-     *   -> replaces the first item with `- newTag`
-     * - Handles missing `tags` key: appends `tags:\n- newTag` to existing frontmatter.
+     * Safely updates YAML frontmatter using Obsidian's atomic `app.fileManager.processFrontMatter()` API
+     * and strictly validates `newTag` against `TAG_VALIDATION_REGEX` to prevent injection attacks.
      *
      * @param todo - The to-do item whose source note is being updated.
      * @param newTag - The new tag name to assign.
      */
     async updateTodoTag(todo: TodoEntry, newTag: string) {
+        if (!TAG_VALIDATION_REGEX.test(newTag)) return;
+
         const file = this.app.vault.getFileByPath(todo.path);
         if (!file) return;
 
         let written = false;
-        this.lock(todo.path);
-        try {
-            await this.app.vault.process(file, (content) => {
-                const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-                if (!fmMatch) return content;
-
-                const fm = fmMatch[1]!;
-                let updated: string;
-                if (/^tags:\s*\[/m.test(fm)) {
-                    // Inline array: tags: [a, b] → tags: [newTag, b]
-                    updated = fm.replace(/^(tags:\s*\[)[^,\]]*/m,
-                        (_: string, open: string) => `${open}${newTag}`);
-                } else if (/^tags:/m.test(fm)) {
-                    // Block list: replace first entry under tags:
-                    updated = fm.replace(/^(tags:\s*\n)((?:[ \t]*-[^\n]*\n)*)/m,
-                        (_: string, key: string, list: string) => {
-                            const rest = list.replace(/^[ \t]*-[ \t]*[^\n]*\n/m, '');
-                            return `${key}- ${newTag}\n${rest}`;
-                        });
+        await this.withFileLock(todo.path, async () => {
+            await this.app.fileManager.processFrontMatter(file, (rawFm: unknown) => {
+                if (!rawFm || typeof rawFm !== 'object') return;
+                const fm = rawFm as Record<string, unknown>;
+                const tags = fm['tags'];
+                if (Array.isArray(tags) && tags.length > 0) {
+                    (tags as unknown[])[0] = newTag;
+                } else if (typeof tags === 'string') {
+                    fm['tags'] = [newTag];
                 } else {
-                    // Frontmatter exists but no tags field: append tags:
-                    updated = fm + `\ntags:\n- ${newTag}`;
+                    fm['tags'] = [newTag];
                 }
-
-                if (updated === fm) return content;
                 written = true;
-                return content.replace(fmMatch[1]!, updated);
             });
-        } finally {
-            this.unlock(todo.path);
-        }
+        });
 
         // If the file update succeeded, update in-memory tag
         if (written) todo.tag = newTag;
