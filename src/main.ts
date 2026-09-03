@@ -3,21 +3,10 @@ import { DEFAULT_SETTINGS, TodoPluginSettings, TodoSettingTab } from './settings
 import { TODO_VIEW_TYPE, TodoView, TodoEntry } from './view';
 import { todoHighlighter } from './highlighter';
 
-export const ANCHOR_REGEX = /\s*%%tid:([a-zA-Z0-9]+)%%/;
+const ANCHOR_REGEX = /\s*%%tid:[a-zA-Z0-9]+%%/g;
 
-export function extractAnchor(text: string): { cleanText: string; anchorId?: string } {
-    const match = text.match(ANCHOR_REGEX);
-    if (match && match[1]) {
-        return {
-            cleanText: text.replace(ANCHOR_REGEX, '').trim(),
-            anchorId: match[1],
-        };
-    }
-    return { cleanText: text.trim() };
-}
-
-export function generateAnchorId(): string {
-    return Math.random().toString(36).substring(2, 8);
+function stripAnchors(text: string): string {
+    return text.replace(ANCHOR_REGEX, '').trim();
 }
 
 export default class TodoPlugin extends Plugin {
@@ -30,35 +19,13 @@ export default class TodoPlugin extends Plugin {
         this.locks.set(path, (this.locks.get(path) ?? 0) + 1);
     }
     private findTargetLineIndex(lines: string[], todo: TodoEntry): number {
-        // 1. Escalated case: If an anchor exists, match strictly by ID
-        if (todo.anchorId) {
-            const anchorTag = `%%tid:${todo.anchorId}%%`;
-            const index = lines.findIndex((l) => l.includes(anchorTag));
-            if (index !== -1) return index;
-        }
-
-        // 2. Common case: Find by exact clean text
-        const matches: number[] = [];
-        for (let i = 0; i < lines.length; i++) {
-            const { cleanText } = extractAnchor(lines[i]!);
-            if (cleanText === todo.text) {
-                matches.push(i);
+        if (lines[todo.line] !== undefined && stripAnchors(lines[todo.line]!) === todo.text) return todo.line;
+        // Line may have shifted slightly — search nearby
+        for (let delta = 1; delta <= 5; delta++) {
+            for (const i of [todo.line - delta, todo.line + delta]) {
+                if (i >= 0 && i < lines.length && stripAnchors(lines[i]!) === todo.text) return i;
             }
         }
-
-        // Exactly one match found (safe to mutate directly)
-        if (matches.length === 1) {
-            return matches[0]!;
-        }
-
-        // 3. Fallback: If multiple unanchored matches collide, use the closest line hint
-        if (matches.length > 1) {
-            if (matches.includes(todo.line)) return todo.line;
-            return matches.reduce((prev, curr) =>
-                Math.abs(curr - todo.line) < Math.abs(prev - todo.line) ? curr : prev
-            );
-        }
-
         return -1;
     }
 
@@ -238,71 +205,19 @@ export default class TodoPlugin extends Plugin {
 
     async scanFileForTodos(file: TFile, shouldRefresh = true) {
         const content = await this.app.vault.cachedRead(file);
-        const lines = content.split('\n');
+        const tag = (this.app.metadataCache.getFileCache(file)?.frontmatter?.tags as string[] | undefined)?.[0];
 
-        interface ParsedItem {
-            lineIndex: number;
-            cleanText: string;
-            anchorId?: string;
-        }
-
-        const parsed: ParsedItem[] = [];
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]!;
-            if (/\b(TODO|DONE):?/.test(line)) {
-                const { cleanText, anchorId } = extractAnchor(line);
-                parsed.push({
-                    lineIndex: i,
-                    cleanText,
-                    anchorId,
-                });
-            }
-        }
-
-        // Count occurrences to detect collisions
-        const counts = new Map<string, number>();
-        for (const item of parsed) {
-            counts.set(item.cleanText, (counts.get(item.cleanText) ?? 0) + 1);
-        }
-
-        // Escalation: inject hidden markers ONLY into colliding lines that lack one
-        let modified = false;
-        for (const item of parsed) {
-            const count = counts.get(item.cleanText) ?? 0;
-            if (count > 1 && !item.anchorId) {
-                item.anchorId = generateAnchorId();
-                lines[item.lineIndex] = `${lines[item.lineIndex]} %%tid:${item.anchorId}%%`;
-                modified = true;
-            }
-        }
-
-        if (modified) {
-            this.lock(file.path);
-            try {
-                await this.app.vault.process(file, () => lines.join('\n'));
-            } finally {
-                this.unlock(file.path);
-            }
-        }
-
-        const todosFromFile: TodoEntry[] = parsed.map((item) => ({
-            line: item.lineIndex,
-            text: item.cleanText,
-            filename: file.basename,
-            path: file.path,
-            anchorId: item.anchorId,
-            tag: (this.app.metadataCache.getFileCache(file)?.frontmatter?.tags as string[] | undefined)?.[0],
-        }));
+        const todosFromFile: TodoEntry[] = content.split('\n').flatMap((line, i) => {
+            if (!/\b(TODO|DONE):?/.test(line)) return [];
+            return [{ line: i, text: stripAnchors(line), filename: file.basename, path: file.path, tag }];
+        });
 
         this.allTodos = [
             ...this.allTodos.filter((t) => t.path !== file.path),
             ...todosFromFile,
         ];
 
-        if (shouldRefresh) {
-            this.refreshTodoView();
-        }
+        if (shouldRefresh) this.refreshTodoView();
         this.updateFileExplorerDebounced();
     }
 

@@ -8,7 +8,6 @@ export interface TodoEntry {
     filename: string;
     path: string;
     line: number;
-    anchorId?: string;
     tag?: string;
 }
 
@@ -24,6 +23,15 @@ export class TodoView extends ItemView {
     getDisplayText() { return 'Todo list'; }
 
     async onOpen() {
+        // Registered once per view lifecycle; Obsidian cleans it up on close
+        this.registerDomEvent(this.containerEl, 'keydown', (e: KeyboardEvent) => {
+            if (e.key !== 'Enter') return;
+            const focused = this.containerEl.querySelector('.todo-item:focus');
+            if (!focused) return;
+            const btn = focused.querySelector<HTMLButtonElement>('.todo-toggle-btn');
+            btn?.click();
+        });
+
         this.refreshUI();
     }
 
@@ -56,20 +64,13 @@ export class TodoView extends ItemView {
             groups.get(key)!.push(todo);
         }
 
-        // Sort: named tags alphabetically, untagged last
         const sortedKeys = [...groups.keys()].sort((a, b) => {
             if (a === '') return 1;
             if (b === '') return -1;
             return a.localeCompare(b);
         });
 
-        let hoveredToggle: (() => void) | null = null;
-        const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Enter' && hoveredToggle) hoveredToggle();
-        };
-        this.registerDomEvent(document as unknown as HTMLElement, 'keydown', onKeyDown as EventListener);
-
-        const drag: { sourceList: HTMLElement | null; sourceCount: HTMLElement | null } = { sourceList: null, sourceCount: null };
+        const drag: { sourceList: HTMLElement | null } = { sourceList: null };
 
         for (const key of sortedKeys) {
             const groupTodos = groups.get(key)!;
@@ -77,9 +78,9 @@ export class TodoView extends ItemView {
 
             const groupHeader = section.createDiv({ cls: 'todo-group-header' });
             groupHeader.createSpan({ text: key || 'Untagged', cls: 'todo-group-title' });
-            const groupCount = groupHeader.createSpan({ text: String(groupTodos.length), cls: 'todo-count' });
+            groupHeader.createSpan({ text: String(groupTodos.length), cls: 'todo-count' });
 
-            const list = section.createEl('ul', { cls: 'todo-list' });
+            const list = section.createEl('ul', { cls: 'todo-list', attr: { role: 'list' } });
 
             list.addEventListener('dragover', (e) => {
                 e.preventDefault();
@@ -94,16 +95,12 @@ export class TodoView extends ItemView {
                 if (!todoId) return;
                 const todo = this.plugin.allTodos.find((t) => t.path + ':' + t.line === todoId);
                 if (!todo || todo.tag === key) return;
-                const draggedEl = container.querySelector(`[data-todo-id="${CSS.escape(todoId)}"]`);
-                if (draggedEl) list.appendChild(draggedEl);
-                if (drag.sourceList && drag.sourceCount)
-                    drag.sourceCount.setText(String(drag.sourceList.children.length));
-                groupCount.setText(String(list.children.length));
-                void this.plugin.updateTodoTag(todo, key);
+                // No optimistic DOM move — refreshUI will re-render after the write
+                void this.plugin.updateTodoTag(todo, key).then(() => this.refreshUI());
             });
 
             for (const todo of groupTodos) {
-                this.createTodoItem(todo, list, groupCount, drag, (fn) => { hoveredToggle = fn; });
+                this.createTodoItem(todo, list, drag);
             }
         }
     }
@@ -111,11 +108,9 @@ export class TodoView extends ItemView {
     private createTodoItem(
         todo: TodoEntry,
         list: HTMLElement,
-        groupCount: HTMLElement,
-        drag: { sourceList: HTMLElement | null; sourceCount: HTMLElement | null },
-        setHovered: (fn: (() => void) | null) => void
+        drag: { sourceList: HTMLElement | null },
     ) {
-        const item = list.createEl('li', { cls: 'todo-item' });
+        const item = list.createEl('li', { cls: 'todo-item', attr: { role: 'listitem' } });
         item.tabIndex = 0;
         item.draggable = true;
         const todoId = todo.path + ':' + todo.line;
@@ -123,15 +118,16 @@ export class TodoView extends ItemView {
         item.addEventListener('dragstart', (e) => {
             e.dataTransfer?.setData('text/plain', todoId);
             drag.sourceList = list;
-            drag.sourceCount = groupCount;
         });
 
-        const checkbox = item.createEl('input', { cls: 'todo-checkbox' });
-        checkbox.type = 'checkbox';
-        checkbox.checked = false;
-
-        const checkIcon = item.createSpan({ cls: 'todo-check-icon' });
-        checkIcon.setText('○');
+        const toggleBtn = item.createEl('button', { cls: 'todo-toggle-btn todo-check-icon' });
+        toggleBtn.setAttribute('aria-label', 'Mark as done');
+        toggleBtn.setText('○');
+        toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleBtn.disabled = true;
+            void this.plugin.toggleTodoCheckbox(todo).then(() => this.refreshUI());
+        });
 
         const textEl = item.createSpan({ cls: 'todo-text' });
         const raw = todo.text.replace(/^[-*]\s*(\[.\]\s*)?/, '');
@@ -175,22 +171,13 @@ export class TodoView extends ItemView {
         linkIcon.style.display = 'none';
         linkIcon.addEventListener('mouseleave', () => { linkIcon.style.display = 'none'; });
 
-        const sourceEl = item.createSpan({ text: todo.filename, cls: 'todo-source' });
+        const sourceEl = item.createEl('button', { text: todo.filename, cls: 'todo-source' });
         sourceEl.title = todo.path;
+        sourceEl.setAttribute('aria-label', `Open ${todo.filename}`);
         sourceEl.addEventListener('click', (e: MouseEvent) => {
             e.stopPropagation();
             void this.openFileAtLine(todo.path, todo.line);
         });
-
-        const toggle = () => {
-            item.remove();
-            groupCount.setText(String(list.children.length));
-            void this.plugin.toggleTodoCheckbox(todo);
-        };
-
-        item.addEventListener('click', toggle);
-        item.addEventListener('mouseenter', () => setHovered(toggle));
-        item.addEventListener('mouseleave', () => setHovered(null));
     }
 
     private async openFileAtLine(filePath: string, line: number) {

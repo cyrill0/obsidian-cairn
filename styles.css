@@ -58,23 +58,6 @@
     background: var(--background-modifier-hover);
 }
 
-.todo-checkbox {
-    display: none;
-}
-
-.todo-check-icon {
-    flex-shrink: 0;
-    font-size: 1em;
-    width: 18px;
-    text-align: center;
-    color: var(--text-muted);
-    margin-top: 1px;
-}
-
-.todo-done .todo-check-icon {
-    color: var(--interactive-accent);
-}
-
 .todo-text {
     flex: 1;
     color: var(--text-normal);
@@ -101,6 +84,7 @@
     font-size: 0.72em;
     color: var(--text-on-accent);
     background: var(--text-muted);
+    border: none;
     border-radius: 4px;
     padding: 1px 6px;
     align-self: flex-start;
@@ -112,6 +96,24 @@
 
 .todo-source:hover {
     background: var(--interactive-accent);
+}
+
+.todo-toggle-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-size: 1em;
+    width: 18px;
+    text-align: center;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+.todo-toggle-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 .todo-inline-link {
@@ -201,4 +203,18 @@
     margin-left: 6px;
     vertical-align: middle;
     text-shadow: 0 0 4px var(--color-orange);
+}
+
+/* Editor line highlight for TODO/DONE lines */
+.todo-line {
+    background-color: var(--color-orange);
+    color: var(--text-on-accent);
+    border-radius: 3px;
+}
+
+.done-line {
+    background-color: var(--color-green);
+    color: var(--text-on-accent);
+    border-radius: 3px;
+    opacity: 0.8;
 }
