@@ -3,12 +3,12 @@ name: Node.js build
 on:
     push:
         branches: ['**']
+    pull_request:
+        branches: ['**']
 
 concurrency:
     group: ci-${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
-    pull_request:
-        branches: ['**']
 
 jobs:
     build:
@@ -21,12 +21,12 @@ jobs:
                 node-version: [22.x, 24.x]
 
         steps:
-            - uses: actions/checkout@d63268305364d27d6d9c34b2079f598444040856 # v6.0.2
-            - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+            - uses: actions/checkout@v4
+            - uses: pnpm/action-setup@v4
               with:
                   version: 11.25.0
             - name: Use Node.js ${{ matrix.node-version }}
-              uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+              uses: actions/setup-node@v4
               with:
                   node-version: ${{ matrix.node-version }}
                   cache: 'pnpm'
