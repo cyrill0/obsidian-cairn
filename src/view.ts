@@ -212,7 +212,7 @@ export class TodoView extends ItemView {
 
         // --- Complete / Toggle Button ---
         const toggleBtn = item.createEl('button', { cls: 'todo-toggle-btn todo-check-icon' });
-        toggleBtn.setAttribute('aria-label', 'Mark as done');
+        toggleBtn.setAttribute('aria-label', 'Complete todo');
         toggleBtn.setText('○');
         toggleBtn.addEventListener('click', (e) => {
             e.stopPropagation();

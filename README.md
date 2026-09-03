@@ -21,11 +21,9 @@ Cairn keeps lightweight, local task lists close to the notes they belong to. Ope
 
 ## Screenshots
 
-![Cairn sidebar](./images/sidebar.svg)
+![Cairn sidebar](./images/sidebar.png)
 
-![Editor highlights](./images/editor-highlights.svg)
-
-![File Explorer indicators](./images/file-explorer.svg)
+![Editor highlights](./images/editor-highlights.png)
 
 ## Installation
 

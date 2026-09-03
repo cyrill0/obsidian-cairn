@@ -50,7 +50,7 @@ test('scans markers and preserves their source locations', async () => {
 		content: [
 			'Introduction',
 			'TODO: Review the release plan %%tid:abc123%%',
-			'DONE: Publish the release notes',
+			'Regular line without marker',
 			'notTODO: this is not a marker',
 		].join('\n'),
 		tags: ['work', 'second-tag'],

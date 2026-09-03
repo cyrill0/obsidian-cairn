@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-cairn",
 	"version": "1.0.0",
-	"description": "Collect TODO and DONE markers from your vault in a sidebar",
+	"description": "Collect TODO markers from your vault in a sidebar",
 	"main": "main.js",
 	"type": "module",
 	"packageManager": "pnpm@11.25.0",
